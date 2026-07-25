@@ -7,6 +7,7 @@ import { post } from '@/lib/api'
 const NAV = [
   { href: '/admin/review', label: 'Review queue' },
   { href: '/admin/payouts', label: 'Payouts' },
+  { href: '/admin/tickets', label: 'Support' },
   { href: '/admin/users', label: 'Users' },
   { href: '/admin/reporting', label: 'Margin' },
   { href: '/admin/networks', label: 'Networks' },

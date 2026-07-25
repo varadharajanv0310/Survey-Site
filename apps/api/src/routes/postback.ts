@@ -3,7 +3,7 @@ import { eq } from 'drizzle-orm'
 import { networks, postbackEvents } from '@app/db/schema'
 import { PostbackParseError, queueJobId, type RawPostback } from '@app/core'
 import type { AppContext } from '../context'
-import { POSTBACK_QUEUE } from '../context'
+import { postbackLimit, routeLimit } from '../rate-limit'
 
 /**
  * Generic postback ingestion.
@@ -191,6 +191,12 @@ export async function registerPostbackRoutes(app: FastifyInstance, ctx: AppConte
   }
 
   // Offer walls typically GET; survey walls sometimes POST. Both supported.
-  app.get('/postback/:networkKey', handler)
-  app.post('/postback/:networkKey', handler)
+  //
+  // The limit is high and keyed per network, not per IP. A network settling a
+  // backlog legitimately sends hundreds of events in a burst, and throttling
+  // those loses real credits and real revenue. The signature check already
+  // rejects anything unsigned, so this ceiling only exists to bound a flood.
+  const options = { config: routeLimit(postbackLimit) }
+  app.get('/postback/:networkKey', options, handler)
+  app.post('/postback/:networkKey', options, handler)
 }

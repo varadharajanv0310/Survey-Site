@@ -1,6 +1,6 @@
 import { and, eq, gt, isNull, sql } from 'drizzle-orm'
 import type { Database } from '@app/db'
-import { authEvents, authTokens, referrals, sessions, users } from '@app/db/schema'
+import { authEvents, authTokens, referrals, sessions, userDevices, users } from '@app/db/schema'
 import { fakeVerify, hashPassword, verifyPassword } from './password'
 import { generateReferralCode, generateToken, hashToken } from './tokens'
 
@@ -38,6 +38,19 @@ const RESET_TTL_MINUTES = 60
 const VERIFY_TTL_HOURS = 48
 
 export const normalizeEmail = (email: string) => email.trim().toLowerCase()
+
+/**
+ * Coarse device class from the user agent. Only used for admin display and
+ * for offer targeting, never for a security decision — the user agent is
+ * attacker-controlled and any fraud check that trusted it would be worthless.
+ */
+function deviceTypeFrom(userAgent: string | undefined): 'desktop' | 'mobile' | 'tablet' | null {
+  if (!userAgent) return null
+  const ua = userAgent.toLowerCase()
+  if (/ipad|tablet|playbook|silk|(android(?!.*mobile))/.test(ua)) return 'tablet'
+  if (/mobi|iphone|ipod|android|blackberry|windows phone/.test(ua)) return 'mobile'
+  return 'desktop'
+}
 
 export class AuthService {
   constructor(
@@ -116,6 +129,7 @@ export class AuthService {
       return newUserId
     })
 
+    await this.recordDevice(userId, input.ctx?.deviceFingerprint, input.ctx?.userAgent)
     await this.sendVerificationEmail(userId, email)
     const session = await this.createSession(userId, input.ctx)
     return { userId, session }
@@ -171,6 +185,8 @@ export class AuthService {
       userAgent: input.ctx?.userAgent ?? null,
       deviceFingerprint: input.ctx?.deviceFingerprint ?? null,
     })
+
+    await this.recordDevice(user.id, input.ctx?.deviceFingerprint, input.ctx?.userAgent)
 
     return { userId: user.id, session: await this.createSession(user.id, input.ctx) }
   }
@@ -344,6 +360,37 @@ export class AuthService {
     })
 
     return row.userId
+  }
+
+  /**
+   * Remember which devices an account signs in from.
+   *
+   * This table is what the `duplicate_device` fraud check reads. Until this
+   * existed nothing wrote to it, so the check ran on every signup and login
+   * and could never fire — the plumbing was complete and inert, which is worse
+   * than absent because the dashboard implies coverage that is not there.
+   *
+   * A shared fingerprint is a much stronger signal than a shared IP: families
+   * share an address, they rarely share a browser fingerprint.
+   */
+  private async recordDevice(
+    userId: string,
+    fingerprint: string | undefined,
+    userAgent: string | undefined,
+  ): Promise<void> {
+    if (!fingerprint) return
+
+    await this.db
+      .insert(userDevices)
+      .values({
+        userId,
+        fingerprint,
+        deviceType: deviceTypeFrom(userAgent),
+      })
+      .onConflictDoUpdate({
+        target: [userDevices.userId, userDevices.fingerprint],
+        set: { lastSeenAt: sql`now()`, seenCount: sql`${userDevices.seenCount} + 1` },
+      })
   }
 
   private async uniqueReferralCode(): Promise<string> {

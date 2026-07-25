@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 import { post } from '@/lib/api'
+import { getFingerprint } from '@/lib/fingerprint'
 import { Button, Field, Input } from '@/components/shell'
 
 export default function LoginPage() {
@@ -18,7 +19,11 @@ export default function LoginPage() {
     setBusy(true)
     setError('')
     try {
-      await post('/auth/login', { email, password })
+      await post('/auth/login', {
+        email,
+        password,
+        deviceFingerprint: await getFingerprint(),
+      })
       router.push('/earn')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'sign in failed')
@@ -55,10 +60,27 @@ export default function LoginPage() {
           </Button>
         </form>
 
-        <p className="mt-5 text-sm text-[var(--color-muted)]">
-          No account?{' '}
-          <Link href="/signup" className="font-medium text-[var(--color-brand)]">
-            Create one
+        <div className="mt-5 space-y-2 text-sm text-[var(--color-muted)]">
+          <p>
+            <Link href="/reset" className="font-medium text-[var(--color-brand)]">
+              Forgot your password?
+            </Link>
+          </p>
+          <p>
+            No account?{' '}
+            <Link href="/signup" className="font-medium text-[var(--color-brand)]">
+              Create one
+            </Link>
+          </p>
+        </div>
+
+        <p className="mt-8 text-xs text-[var(--color-muted)]">
+          <Link href="/legal/privacy" className="hover:underline">
+            Privacy
+          </Link>
+          {' · '}
+          <Link href="/legal/terms" className="hover:underline">
+            Terms
           </Link>
         </p>
       </div>

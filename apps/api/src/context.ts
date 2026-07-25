@@ -11,6 +11,7 @@ import {
   MockPayoutProvider,
   PayoutService,
   SettingsService,
+  createEmailProvider,
   type PayoutProvider,
 } from '@app/core'
 
@@ -80,15 +81,16 @@ export async function createContext() {
     log,
   })
 
+  // Falls back to the console sender when RESEND_API_KEY is unset, and says so
+  // rather than pretending mail went out.
+  const email = createEmailProvider()
+
   const auth = new AuthService(db, {
-    // No email provider is configured, so mail goes to the console. Anything
-    // that reads like a working delivery pipeline would be a lie.
     sendEmail: async (to, subject, body) => {
-      console.log(`\n--- EMAIL (not sent; no provider configured) ---`)
-      console.log(`to:      ${to}`)
-      console.log(`subject: ${subject}`)
-      console.log(body)
-      console.log(`--- end email ---\n`)
+      const result = await email.send({ to, subject, text: body })
+      if (!result.delivered) {
+        log('email not delivered', { to, subject, reason: result.reason, provider: email.key })
+      }
     },
   })
 

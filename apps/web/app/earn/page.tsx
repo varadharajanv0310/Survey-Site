@@ -1,7 +1,8 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { api, formatPoints, post } from '@/lib/api'
+import { API_URL, api, formatPoints, post } from '@/lib/api'
+import { getFingerprint } from '@/lib/fingerprint'
 import { Badge, Button, Card, Shell } from '@/components/shell'
 
 type Offer = {
@@ -59,6 +60,25 @@ export default function EarnPage() {
     }
   }
 
+  /**
+   * Record the click, then open. Deliberately does not await the record before
+   * opening: a user who taps and waits taps again, and a lost click is a worse
+   * support answer rather than a broken flow.
+   *
+   * `sendBeacon` where available, because the page may be backgrounded the
+   * instant the offer opens and a normal fetch would be cancelled.
+   */
+  const trackClick = (payload: { offerId?: string; placementId?: string }) => {
+    getFingerprint().then((deviceFingerprint) => {
+      const body = JSON.stringify({ ...payload, deviceFingerprint })
+      post('/offers/click', { ...payload, deviceFingerprint }).catch(() => {
+        if (typeof navigator !== 'undefined' && navigator.sendBeacon) {
+          navigator.sendBeacon(`${API_URL}/offers/click`, new Blob([body], { type: 'application/json' }))
+        }
+      })
+    })
+  }
+
   const categories = ['all', ...new Set(feed?.offers.map((o) => o.category) ?? [])]
   const visible = feed?.offers.filter((o) => filter === 'all' || o.category === filter) ?? []
 
@@ -102,6 +122,7 @@ export default function EarnPage() {
                 href={wall.url}
                 target="_blank"
                 rel="noreferrer"
+                onClick={() => trackClick({ placementId: wall.id })}
                 className="group rounded-xl border border-[var(--color-line)] bg-gradient-to-br from-indigo-50 to-white p-5 transition hover:border-[var(--color-brand)]"
               >
                 <div className="flex items-center justify-between">
@@ -147,6 +168,7 @@ export default function EarnPage() {
             href={offer.url}
             target="_blank"
             rel="noreferrer"
+            onClick={() => trackClick({ offerId: offer.id })}
             className="flex flex-col rounded-xl border border-[var(--color-line)] bg-white p-4 transition hover:border-[var(--color-brand)] hover:shadow-sm"
           >
             <div className="flex items-start justify-between gap-3">

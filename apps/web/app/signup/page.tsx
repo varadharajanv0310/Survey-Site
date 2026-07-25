@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Suspense, useState } from 'react'
 import { post } from '@/lib/api'
+import { getFingerprint } from '@/lib/fingerprint'
 import { Button, Field, Input } from '@/components/shell'
 
 function SignupForm() {
@@ -20,7 +21,12 @@ function SignupForm() {
     setBusy(true)
     setError('')
     try {
-      await post('/auth/signup', { email, password, referralCode: referralCode || undefined })
+      await post('/auth/signup', {
+        email,
+        password,
+        referralCode: referralCode || undefined,
+        deviceFingerprint: await getFingerprint(),
+      })
       router.push('/earn')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'sign up failed')
@@ -69,6 +75,18 @@ function SignupForm() {
         <Link href="/login" className="font-medium text-[var(--color-brand)]">
           Sign in
         </Link>
+      </p>
+
+      <p className="mt-8 text-xs leading-relaxed text-[var(--color-muted)]">
+        By creating an account you agree to our{' '}
+        <Link href="/legal/terms" className="underline">
+          Terms
+        </Link>{' '}
+        and{' '}
+        <Link href="/legal/privacy" className="underline">
+          Privacy Policy
+        </Link>
+        .
       </p>
     </div>
   )

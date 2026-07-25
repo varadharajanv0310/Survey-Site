@@ -26,6 +26,11 @@ in a diff. Split into ones already answered, and ones waiting on you.
 | 15 | Minimum redemption | **₹500 = 5,000 points.** |
 | 16 | Referral | **Unchanged** — 500 points on the referee's first earning, plus 10% lifetime commission. See the note below. |
 | 17 | Test database isolation | **Tests get their own database** and refuse to run against one whose name does not end in `_test`. `npm test` truncates everything it touches, and it had already wiped a freshly seeded dev database once. |
+| 18 | Balance-mutating concurrency | **Transaction-scoped advisory lock** keyed on the user id, over `SELECT … FOR UPDATE` on the users row (which would queue behind unrelated writes like a profile edit or a ban) and over `SERIALIZABLE` (which turns contention into user-visible errors needing retry at every call site). Measured equivalent to `FOR UPDATE` on correctness; cheaper on contention. |
+| 19 | Hold windows apply to credits only | A debit is effective immediately. This was previously implicit — it relied on a debit's `available_at` default already being in the past, which is false inside a transaction where `now()` is the transaction start time. Now stated explicitly in the query. |
+| 20 | Rate limiting shape | **Tiered by what abuse costs**, not one global number. Credentials tight, email tighter, payouts tightest, postbacks deliberately generous — a network settling a backlog bursts, and throttling that loses real credits. Signed-in users keyed on session rather than IP, because carrier NAT and campus networks mean a shared IP is normal for this audience. |
+| 21 | Password hashing, revisited | scrypt retained. Still the OWASP second choice, still zero native dependencies. |
+| 22 | Flagged signups | **Get an account anyway.** Signup-time signals are the weakest we have; only an outright deny suspends, and the payout gate is where the decision actually bites. |
 
 ---
 

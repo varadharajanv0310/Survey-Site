@@ -39,7 +39,7 @@ export async function resetDb(db: Database): Promise<void> {
     TRUNCATE TABLE
       ledger_entries, completions, postback_events, payouts, payout_transitions,
       fraud_evaluations, fraud_check_results, review_items,
-      referrals, daily_claims, tickets, ticket_messages,
+      referrals, daily_claims, tickets, ticket_messages, offer_clicks,
       sessions, auth_tokens, auth_events, user_devices, users,
       offers, wall_placements, networks, audit_log
     RESTART IDENTITY CASCADE
@@ -61,6 +61,21 @@ export async function makeUser(
       ${`TEST${userSeq}${Date.now().toString(36).toUpperCase()}`},
       ${overrides.country ?? 'US'}
     )
+    RETURNING id
+  `)) as unknown as { id: string }[]
+  return rows[0]!.id
+}
+
+/**
+ * A real admin row. `payouts.decided_by_admin_id` is a foreign key, so tests
+ * that approve a payout need an admin that actually exists — a random uuid is
+ * correctly rejected by the database.
+ */
+export async function makeAdmin(db: Database, role = 'superadmin'): Promise<string> {
+  userSeq += 1
+  const rows = (await db.execute(sql`
+    INSERT INTO admin_users (email, password_hash, role)
+    VALUES (${`admin${userSeq}-${Date.now()}@test.local`}, 'not-a-real-hash', ${role}::admin_role)
     RETURNING id
   `)) as unknown as { id: string }[]
   return rows[0]!.id

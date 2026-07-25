@@ -60,7 +60,7 @@ await db.execute(sql`
   TRUNCATE TABLE
     ledger_entries, completions, postback_events, payouts, payout_transitions,
     fraud_evaluations, fraud_check_results, review_items,
-    referrals, daily_claims, tickets, ticket_messages,
+    referrals, daily_claims, tickets, ticket_messages, offer_clicks,
     sessions, admin_sessions, auth_tokens, auth_events, user_devices, users,
     offers, wall_placements, networks, audit_log, admin_users,
     settings, settings_versions

@@ -2,6 +2,7 @@ import Fastify from 'fastify'
 import cookie from '@fastify/cookie'
 import cors from '@fastify/cors'
 import { createContext } from './context'
+import { registerRateLimiting } from './rate-limit'
 import { registerAuthRoutes } from './routes/auth'
 import { registerUserRoutes } from './routes/user'
 import { registerAdminRoutes } from './routes/admin'
@@ -50,6 +51,11 @@ await app.register(cors, {
   origin: process.env.WEB_PUBLIC_URL ?? 'http://localhost:3000',
   credentials: true,
 })
+
+// Registered before the routes so per-route `config.rateLimit` is picked up.
+// Counters live in Redis: with an in-memory store, running two API instances
+// would silently double every limit.
+await registerRateLimiting(app, ctx.connection)
 
 app.get('/health', async () => {
   await ctx.db.execute('SELECT 1' as never)

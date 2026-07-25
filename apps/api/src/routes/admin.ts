@@ -5,6 +5,7 @@ import {
   completions,
   ledgerEntries,
   networks,
+  offerClicks,
   payouts,
   reviewItems,
   settings as settingsTable,
@@ -21,13 +22,14 @@ import {
 } from '@app/core'
 import type { AppContext } from '../context'
 import { ADMIN_COOKIE, cookieOptions, requireAdmin } from '../auth-hook'
+import { credentialLimit, routeLimit } from '../rate-limit'
 
 export async function registerAdminRoutes(app: FastifyInstance, ctx: AppContext) {
   const viewer = { preHandler: requireAdmin(ctx, 'viewer') }
   const reviewer = { preHandler: requireAdmin(ctx, 'reviewer') }
   const superadmin = { preHandler: requireAdmin(ctx, 'superadmin') }
 
-  app.post('/admin/login', async (request, reply) => {
+  app.post('/admin/login', { config: routeLimit(credentialLimit) }, async (request, reply) => {
     const body = z
       .object({ email: z.string().email(), password: z.string().min(1) })
       .safeParse(request.body)
@@ -533,6 +535,113 @@ export async function registerAdminRoutes(app: FastifyInstance, ctx: AppContext)
     return { tickets: rows }
   })
 
+  /**
+   * A ticket with everything needed to answer it in one response.
+   *
+   * For a missing-points claim that includes a transaction id, this also
+   * returns what the network actually sent us — so the reply can be "the
+   * network never fired for that transaction" or "it arrived and was reversed
+   * on the 3rd" rather than a guess.
+   */
+  app.get('/admin/tickets/:id', viewer, async (request, reply) => {
+    const { id } = request.params as { id: string }
+
+    const [ticket] = await ctx.db
+      .select({
+        id: tickets.id,
+        userId: tickets.userId,
+        userEmail: users.email,
+        userStatus: users.status,
+        kind: tickets.kind,
+        subject: tickets.subject,
+        status: tickets.status,
+        networkId: tickets.networkId,
+        networkName: networks.name,
+        externalTransactionId: tickets.externalTransactionId,
+        claimedOfferName: tickets.claimedOfferName,
+        completedAt: tickets.completedAt,
+        createdAt: tickets.createdAt,
+        resolutionNote: tickets.resolutionNote,
+      })
+      .from(tickets)
+      .innerJoin(users, eq(users.id, tickets.userId))
+      .leftJoin(networks, eq(networks.id, tickets.networkId))
+      .where(eq(tickets.id, id))
+      .limit(1)
+
+    if (!ticket) return reply.code(404).send({ error: 'not found' })
+
+    const messages = await ctx.db
+      .select({
+        id: ticketMessages.id,
+        body: ticketMessages.body,
+        isInternal: ticketMessages.isInternal,
+        authorUserId: ticketMessages.authorUserId,
+        authorAdminId: ticketMessages.authorAdminId,
+        createdAt: ticketMessages.createdAt,
+      })
+      .from(ticketMessages)
+      .where(eq(ticketMessages.ticketId, id))
+      .orderBy(ticketMessages.createdAt)
+
+    const balance = await ctx.ledger.getBalance(ticket.userId)
+
+    // The evidence, when the claim names a transaction.
+    let evidence: Record<string, unknown> | null = null
+    if (ticket.externalTransactionId) {
+      const txId = ticket.externalTransactionId
+      const events = (await ctx.db.execute(sql`
+        SELECT received_at, signature_valid, parse_status::TEXT AS parse_status,
+               parse_error, dedupe_outcome::TEXT AS dedupe_outcome
+        FROM postback_events
+        WHERE query_string ILIKE ${'%' + txId + '%'}
+        ORDER BY received_at DESC LIMIT 20
+      `)) as unknown as Record<string, unknown>[]
+
+      const matched = await ctx.db
+        .select()
+        .from(completions)
+        .where(eq(completions.externalTransactionId, txId))
+        .limit(10)
+
+      const entries = await ctx.db
+        .select()
+        .from(ledgerEntries)
+        .where(eq(ledgerEntries.externalTransactionId, txId))
+        .limit(10)
+
+      evidence = {
+        postbackEvents: events,
+        completions: matched,
+        ledgerEntries: entries,
+        // The distinction that decides the reply.
+        verdict:
+          entries.length > 0
+            ? 'credited'
+            : matched.length > 0
+              ? 'received_but_not_credited'
+              : events.length > 0
+                ? 'postback_received_but_rejected'
+                : 'no_postback_ever_received',
+      }
+    }
+
+    // Did they actually open it? Separates "never started" from "network
+    // never fired", which are different conversations.
+    const clicks = await ctx.db
+      .select({
+        offerTitle: offerClicks.offerTitle,
+        externalOfferId: offerClicks.externalOfferId,
+        createdAt: offerClicks.createdAt,
+      })
+      .from(offerClicks)
+      .where(eq(offerClicks.userId, ticket.userId))
+      .orderBy(desc(offerClicks.createdAt))
+      .limit(25)
+
+    return { ticket, messages, balance, evidence, recentClicks: clicks }
+  })
+
   app.post('/admin/tickets/:id/reply', reviewer, async (request, reply) => {
     const { id } = request.params as { id: string }
     const body = z
@@ -597,5 +706,60 @@ export async function registerAdminRoutes(app: FastifyInstance, ctx: AppContext)
       .limit(20)
 
     return { postbackEvents: events, completions: matched, ledgerEntries: entries }
+  })
+
+  /**
+   * What a user actually did, in order.
+   *
+   * The point of pairing clicks with completions is that it separates the
+   * three cases behind "I did the offer and got nothing": never started,
+   * started and the network never fired, or fired and we rejected it. Each
+   * needs a different answer, and the click log is what tells them apart.
+   */
+  app.get('/admin/users/:id/activity', viewer, async (request) => {
+    const { id } = request.params as { id: string }
+
+    const clicks = await ctx.db
+      .select({
+        id: offerClicks.id,
+        offerTitle: offerClicks.offerTitle,
+        externalOfferId: offerClicks.externalOfferId,
+        networkName: networks.name,
+        ip: offerClicks.ip,
+        createdAt: offerClicks.createdAt,
+      })
+      .from(offerClicks)
+      .leftJoin(networks, eq(networks.id, offerClicks.networkId))
+      .where(eq(offerClicks.userId, id))
+      .orderBy(desc(offerClicks.createdAt))
+      .limit(100)
+
+    const userCompletions = await ctx.db
+      .select({
+        id: completions.id,
+        externalTransactionId: completions.externalTransactionId,
+        externalOfferId: completions.externalOfferId,
+        kind: completions.kind,
+        status: completions.status,
+        pointsAwarded: completions.pointsAwarded,
+        receivedAt: completions.receivedAt,
+        networkName: networks.name,
+      })
+      .from(completions)
+      .leftJoin(networks, eq(networks.id, completions.networkId))
+      .where(eq(completions.userId, id))
+      .orderBy(desc(completions.receivedAt))
+      .limit(100)
+
+    // Clicks with no completion are the interesting rows: either the user did
+    // not finish, or the network owes us an event.
+    const convertedOfferIds = new Set(
+      userCompletions.map((c) => c.externalOfferId).filter(Boolean) as string[],
+    )
+    const unconverted = clicks.filter(
+      (c) => c.externalOfferId && !convertedOfferIds.has(c.externalOfferId),
+    )
+
+    return { clicks, completions: userCompletions, unconvertedClicks: unconverted.length }
   })
 }

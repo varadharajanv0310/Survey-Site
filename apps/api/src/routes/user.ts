@@ -5,6 +5,7 @@ import {
   dailyClaims,
   ledgerEntries,
   networks,
+  offerClicks,
   offers,
   payouts,
   referrals,
@@ -23,6 +24,7 @@ import {
 } from '@app/core'
 import type { AppContext } from '../context'
 import { requireUser } from '../auth-hook'
+import { payoutLimit, routeLimit, supportLimit } from '../rate-limit'
 
 export async function registerUserRoutes(app: FastifyInstance, ctx: AppContext) {
   const auth = { preHandler: requireUser(ctx) }
@@ -178,6 +180,77 @@ export async function registerUserRoutes(app: FastifyInstance, ctx: AppContext) 
     }
   })
 
+  /**
+   * Record that a user opened an offer or a wall.
+   *
+   * Fire-and-forget from the client's point of view: it must never delay or
+   * block opening the offer, because a user who taps and waits taps again.
+   * A lost click is a worse support answer, not a broken flow.
+   */
+  app.post('/offers/click', auth, async (request, reply) => {
+    const body = z
+      .object({
+        offerId: z.string().uuid().optional(),
+        placementId: z.string().uuid().optional(),
+        deviceFingerprint: z.string().max(128).optional(),
+      })
+      .safeParse(request.body)
+
+    if (!body.success || (!body.data.offerId && !body.data.placementId)) {
+      return reply.code(400).send({ error: 'offerId or placementId is required' })
+    }
+
+    const userToken = signUserToken(request.userId!, ctx.userTokenSecret)
+
+    if (body.data.offerId) {
+      const [offer] = await ctx.db
+        .select({
+          id: offers.id,
+          networkId: offers.networkId,
+          externalOfferId: offers.externalOfferId,
+          title: offers.title,
+        })
+        .from(offers)
+        .where(eq(offers.id, body.data.offerId))
+        .limit(1)
+
+      if (!offer) return reply.code(404).send({ error: 'no such offer' })
+
+      await ctx.db.insert(offerClicks).values({
+        userId: request.userId!,
+        networkId: offer.networkId,
+        offerId: offer.id,
+        externalOfferId: offer.externalOfferId,
+        offerTitle: offer.title,
+        userToken,
+        ip: request.ip,
+        userAgent: request.headers['user-agent'] ?? null,
+        deviceFingerprint: body.data.deviceFingerprint ?? null,
+      })
+    } else {
+      const [placement] = await ctx.db
+        .select({ id: wallPlacements.id, networkId: wallPlacements.networkId, name: wallPlacements.name })
+        .from(wallPlacements)
+        .where(eq(wallPlacements.id, body.data.placementId!))
+        .limit(1)
+
+      if (!placement) return reply.code(404).send({ error: 'no such placement' })
+
+      await ctx.db.insert(offerClicks).values({
+        userId: request.userId!,
+        networkId: placement.networkId,
+        placementId: placement.id,
+        offerTitle: placement.name,
+        userToken,
+        ip: request.ip,
+        userAgent: request.headers['user-agent'] ?? null,
+        deviceFingerprint: body.data.deviceFingerprint ?? null,
+      })
+    }
+
+    return { ok: true }
+  })
+
   // --- referrals -----------------------------------------------------------
 
   app.get('/me/referrals', auth, async (request) => {
@@ -295,7 +368,10 @@ export async function registerUserRoutes(app: FastifyInstance, ctx: AppContext) 
 
   // --- redemption ----------------------------------------------------------
 
-  app.post('/me/payouts', auth, async (request, reply) => {
+  app.post(
+    '/me/payouts',
+    { ...auth, config: routeLimit(payoutLimit) },
+    async (request, reply) => {
     const body = z
       .object({
         points: z.number().int().positive(),
@@ -327,14 +403,17 @@ export async function registerUserRoutes(app: FastifyInstance, ctx: AppContext) 
       }
 
       return result
-    } catch (error) {
-      if (error instanceof PayoutError) return reply.code(400).send({ error: error.message, code: error.code })
-      if (error instanceof Error && error.name === 'InsufficientBalanceError') {
-        return reply.code(400).send({ error: error.message, code: 'insufficient_balance' })
+      } catch (error) {
+        if (error instanceof PayoutError) {
+          return reply.code(400).send({ error: error.message, code: error.code })
+        }
+        if (error instanceof Error && error.name === 'InsufficientBalanceError') {
+          return reply.code(400).send({ error: error.message, code: 'insufficient_balance' })
+        }
+        throw error
       }
-      throw error
-    }
-  })
+    },
+  )
 
   app.get('/me/payouts', auth, async (request) => {
     const rows = await ctx.db
@@ -388,7 +467,7 @@ export async function registerUserRoutes(app: FastifyInstance, ctx: AppContext) 
    * transaction up in `postback_events` and telling the user exactly what the
    * network did or did not send.
    */
-  app.post('/me/tickets', auth, async (request, reply) => {
+  app.post('/me/tickets', { ...auth, config: routeLimit(supportLimit) }, async (request, reply) => {
     const body = z
       .object({
         kind: z.enum(['missing_points', 'payout_issue', 'account', 'other']),
