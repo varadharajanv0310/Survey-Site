@@ -11,6 +11,7 @@ type Balance = {
   onHold: number
   pending: number
   estimatedValueMinor: number
+  currency: string
   minRedemptionPoints: number
 }
 
@@ -65,7 +66,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
                 {formatPoints(balance.posted)} pts
               </div>
               <div className="text-xs text-[var(--color-muted)]">
-                ≈ {formatMoney(balance.estimatedValueMinor)}
+                ≈ {formatMoney(balance.estimatedValueMinor, balance.currency)}
               </div>
             </div>
           )}

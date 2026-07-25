@@ -5,7 +5,7 @@ import type { SettingsShape } from '../config/settings'
 import { hashDestination, maskDestination } from '../auth/tokens'
 import { LedgerService } from '../ledger/service'
 import { ledgerKeys } from '../ledger/keys'
-import { minorUnitsForPoints } from '../money'
+import { currencyConfig, minorUnitsForPoints } from '../money'
 import type { FraudPipeline } from '../fraud/pipeline'
 import type { FraudContext } from '../fraud/types'
 import type { PayoutMethod, PayoutProvider } from './provider'
@@ -110,7 +110,8 @@ export class PayoutService {
     if (!validation.valid) throw new PayoutError(validation.reason, 'invalid_destination')
 
     const payoutId = crypto.randomUUID()
-    const amountMinor = minorUnitsForPoints(input.points, settings.points_per_usd)
+    const currency = currencyConfig(settings)
+    const amountMinor = minorUnitsForPoints(input.points, currency)
 
     // Reserve first. If the balance is short this throws and no payout row is
     // created, so there is never a payout without a matching debit.
@@ -126,7 +127,7 @@ export class PayoutService {
       userId: input.userId,
       requestedPoints: input.points,
       amountMinor,
-      currency: 'USD',
+      currency: currency.baseCurrency,
       configVersion: this.deps.configVersion,
       method: input.method,
       destinationMasked: maskDestination(input.destination),

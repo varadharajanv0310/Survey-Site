@@ -6,7 +6,7 @@ import type { SettingsShape } from '../config/settings'
 import { FraudPipeline } from '../fraud/pipeline'
 import { LedgerService } from '../ledger/service'
 import { ledgerKeys } from '../ledger/keys'
-import { awardPoints } from '../money'
+import { awardPoints, currencyConfig } from '../money'
 import { verifyUserToken } from '../auth/tokens'
 
 export type ProcessOutcome = {
@@ -112,7 +112,7 @@ export class CompletionProcessor {
     const points = awardPoints({
       grossUsdMicros: completion.grossUsdMicros,
       revenueShareBps: args.revenueShareBps,
-      pointsPerUsd: settings.points_per_usd,
+      currency: currencyConfig(settings),
       minAwardPoints: settings.min_award_points,
     })
 

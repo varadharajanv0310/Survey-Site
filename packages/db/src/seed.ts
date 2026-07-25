@@ -14,11 +14,13 @@ import {
   LedgerService,
   SettingsService,
   awardPoints,
+  currencyConfig,
   hashPassword,
   ledgerKeys,
   generateReferralCode,
   hashDestination,
   maskDestination,
+  minorUnitsForPoints,
 } from '@app/core'
 import {
   completions,
@@ -127,20 +129,23 @@ await db.insert(wallPlacements).values({
 // --- offers -----------------------------------------------------------------
 
 const CATALOG = [
-  ['sow-1001', 'Coin Master — reach village 5', 'game', 4_200_000, ['US', 'CA', 'GB', 'AU'], ['mobile'], 90],
-  ['sow-1002', 'MyPoints — complete registration', 'signup', 1_150_000, ['US'], ['desktop', 'mobile'], 5],
-  ['sow-1003', 'Temu — first order', 'purchase', 12_500_000, ['US', 'GB', 'DE', 'IN'], ['desktop', 'mobile', 'tablet'], 15],
-  ['sow-1004', 'Solitaire Cash — play 3 games', 'game', 850_000, ['US', 'IN'], ['mobile'], 20],
-  ['sow-1005', 'Streaming trial — 7 days', 'signup', 8_000_000, ['US', 'CA'], ['desktop', 'mobile'], 10],
-  ['sow-1006', 'Grocery app — install and open', 'app_install', 320_000, ['IN'], ['mobile'], 3],
+  ['sow-1001', 'Dream11 — register and join a contest', 'signup', 1_400_000, ['IN'], ['mobile'], 10],
+  ['sow-1002', 'Meesho — first order', 'purchase', 2_100_000, ['IN'], ['desktop', 'mobile', 'tablet'], 15],
+  ['sow-1003', 'Ludo Star — reach level 5', 'game', 620_000, ['IN', 'BD', 'PK'], ['mobile'], 45],
+  ['sow-1004', 'Grocery app — install and open', 'app_install', 180_000, ['IN'], ['mobile'], 3],
+  ['sow-1005', 'Streaming trial — 7 days', 'signup', 3_400_000, ['IN'], ['desktop', 'mobile'], 10],
+  ['sow-1006', 'Credit card application — approved', 'signup', 11_000_000, ['IN'], ['desktop', 'mobile'], 20],
+  ['sow-1007', 'Amazon Pay — complete a UPI transaction', 'signup', 950_000, ['IN'], ['mobile'], 8],
 ] as const
+
+const CURRENCY = currencyConfig(S)
 
 const offerIds: Record<string, string> = {}
 for (const [externalId, title, category, gross, countries, devices, minutes] of CATALOG) {
   const points = awardPoints({
     grossUsdMicros: gross,
     revenueShareBps: offerWall!.revenueShareBps,
-    pointsPerUsd: S.points_per_usd,
+    currency: CURRENCY,
     minAwardPoints: S.min_award_points,
   })
   const [row] = await db
@@ -177,13 +182,13 @@ type SeedUser = {
 }
 
 const SEED_USERS: SeedUser[] = [
-  { email: 'demo@example.com', country: 'US', verified: true, status: 'active' },
+  { email: 'demo@example.com', country: 'IN', verified: true, status: 'active' },
   { email: 'priya@example.com', country: 'IN', verified: true, status: 'active' },
-  { email: 'marcus@example.com', country: 'GB', verified: true, status: 'active' },
-  { email: 'unverified@example.com', country: 'US', verified: false, status: 'active' },
-  { email: 'newbie@example.com', country: 'CA', verified: true, status: 'active' },
-  { email: 'flagged@example.com', country: 'US', verified: true, status: 'active' },
-  { email: 'banned@example.com', country: 'US', verified: true, status: 'banned' },
+  { email: 'arjun@example.com', country: 'IN', verified: true, status: 'active' },
+  { email: 'unverified@example.com', country: 'IN', verified: false, status: 'active' },
+  { email: 'newbie@example.com', country: 'IN', verified: true, status: 'active' },
+  { email: 'flagged@example.com', country: 'IN', verified: true, status: 'active' },
+  { email: 'banned@example.com', country: 'IN', verified: true, status: 'banned' },
 ]
 
 const userIds: Record<string, string> = {}
@@ -240,7 +245,7 @@ async function seedCompletion(args: {
   const points = awardPoints({
     grossUsdMicros: args.grossUsdMicros,
     revenueShareBps: args.revenueShareBps,
-    pointsPerUsd: S.points_per_usd,
+    currency: CURRENCY,
     minAwardPoints: S.min_award_points,
   })
 
@@ -327,8 +332,8 @@ await seedCompletion({
   email: 'demo@example.com',
   networkId: offerWall!.id,
   networkKey: 'sim_offer_wall',
-  offerExternalId: 'sow-1003',
-  grossUsdMicros: 12_500_000,
+  offerExternalId: 'sow-1006',
+  grossUsdMicros: 11_000_000,
   kind: 'credit',
   revenueShareBps: offerWall!.revenueShareBps,
   daysAgo: 0,
@@ -341,7 +346,7 @@ const clawedBack = await seedCompletion({
   networkId: offerWall!.id,
   networkKey: 'sim_offer_wall',
   offerExternalId: 'sow-1005',
-  grossUsdMicros: 8_000_000,
+  grossUsdMicros: 3_400_000,
   kind: 'credit',
   revenueShareBps: offerWall!.revenueShareBps,
   daysAgo: 5,
@@ -352,7 +357,7 @@ await db.insert(completions).values({
   kind: 'reversal',
   reversalEventId: 'seed-rev-1',
   userId: userIds['demo@example.com']!,
-  grossUsdMicros: 8_000_000,
+  grossUsdMicros: 3_400_000,
   status: 'reversed',
   raw: { source: 'seed', reason: 'trial cancelled within 7 days' },
 })
@@ -363,19 +368,24 @@ await ledger.reverse({
   externalTransactionId: clawedBack.txId,
 })
 
-// Other users, lighter histories.
-for (const email of ['priya@example.com', 'marcus@example.com', 'newbie@example.com']) {
-  const count = email === 'newbie@example.com' ? 1 : 4
+/**
+ * Other users. Enough history that they clear the ₹500 minimum, so the payout
+ * queue below has something to seed — a demo where nobody can cash out shows
+ * none of the screens that matter.
+ */
+for (const email of ['priya@example.com', 'arjun@example.com', 'newbie@example.com']) {
+  const count = email === 'newbie@example.com' ? 2 : 5
   for (let i = 0; i < count; i += 1) {
+    const isOffer = i % 2 === 0
     await seedCompletion({
       email,
-      networkId: i % 2 === 0 ? offerWall!.id : surveyWall!.id,
-      networkKey: i % 2 === 0 ? 'sim_offer_wall' : 'sim_survey_wall',
-      ...(i % 2 === 0 ? { offerExternalId: 'sow-1004' } : {}),
-      grossUsdMicros: i % 2 === 0 ? 850_000 : 1_350_000,
+      networkId: isOffer ? offerWall!.id : surveyWall!.id,
+      networkKey: isOffer ? 'sim_offer_wall' : 'sim_survey_wall',
+      ...(isOffer ? { offerExternalId: 'sow-1006' } : {}),
+      grossUsdMicros: isOffer ? 11_000_000 : 1_350_000,
       kind: 'credit',
-      revenueShareBps: i % 2 === 0 ? offerWall!.revenueShareBps : surveyWall!.revenueShareBps,
-      daysAgo: 14 - i * 3,
+      revenueShareBps: isOffer ? offerWall!.revenueShareBps : surveyWall!.revenueShareBps,
+      daysAgo: 14 - i * 2,
     })
   }
 }
@@ -385,8 +395,8 @@ const heldResult = await seedCompletion({
   email: 'flagged@example.com',
   networkId: offerWall!.id,
   networkKey: 'sim_offer_wall',
-  offerExternalId: 'sow-1003',
-  grossUsdMicros: 12_500_000,
+  offerExternalId: 'sow-1006',
+  grossUsdMicros: 11_000_000,
   kind: 'credit',
   revenueShareBps: offerWall!.revenueShareBps,
   daysAgo: 1,
@@ -453,8 +463,8 @@ async function seedPayout(args: {
     id: payoutId,
     userId,
     requestedPoints: args.points,
-    amountMinor: Math.floor((args.points * 100) / S.points_per_usd),
-    currency: 'USD',
+    amountMinor: minorUnitsForPoints(args.points, CURRENCY),
+    currency: CURRENCY.baseCurrency,
     method: args.method,
     destinationMasked: maskDestination(args.destination),
     destinationHash: hashDestination(args.destination, USER_TOKEN_SECRET),
@@ -491,36 +501,37 @@ async function seedPayout(args: {
   return payoutId
 }
 
+// UPI first: it is how this audience actually gets paid.
 await seedPayout({
   email: 'demo@example.com',
-  points: 2_000,
+  points: 5_000, // ₹500
   state: 'paid',
-  method: 'paypal',
-  destination: 'demo@example.com',
+  method: 'upi',
+  destination: 'demo@okhdfcbank',
   daysAgo: 9,
 })
 await seedPayout({
-  email: 'marcus@example.com',
-  points: 800,
+  email: 'arjun@example.com',
+  points: 6_000, // ₹600
   state: 'under_review',
-  method: 'paypal',
-  destination: 'marcus@example.com',
+  method: 'upi',
+  destination: 'arjun@okaxis',
   daysAgo: 1,
 })
 await seedPayout({
   email: 'priya@example.com',
-  points: 600,
+  points: 5_000, // ₹500
   state: 'requested',
   method: 'upi',
   destination: 'priya@okhdfcbank',
   daysAgo: 0,
 })
 await seedPayout({
-  email: 'marcus@example.com',
-  points: 500,
+  email: 'arjun@example.com',
+  points: 5_000, // ₹500
   state: 'failed',
   method: 'paypal',
-  destination: 'marcus.old@example.com',
+  destination: 'arjun.old@example.com',
   daysAgo: 6,
 })
 
@@ -531,11 +542,11 @@ const [ticket] = await db
   .values({
     userId: userIds['priya@example.com']!,
     kind: 'missing_points',
-    subject: 'Completed Temu order, no points',
+    subject: 'Completed Meesho order, no points',
     status: 'open',
     networkId: offerWall!.id,
     externalTransactionId: 'seed-tx-00099',
-    claimedOfferName: 'Temu — first order',
+    claimedOfferName: 'Meesho — first order',
     completedAt: daysAgo(2),
   })
   .returning({ id: tickets.id })
@@ -543,7 +554,7 @@ const [ticket] = await db
 await db.insert(ticketMessages).values({
   ticketId: ticket!.id,
   authorUserId: userIds['priya@example.com']!,
-  body: 'I placed an order for $8 two days ago and still have not received the points. Order number 55512.',
+  body: 'I placed an order for ₹450 two days ago and still have not received the points. Order number 55512.',
 })
 
 const [ticket2] = await db
@@ -551,7 +562,7 @@ const [ticket2] = await db
   .values({
     userId: userIds['newbie@example.com']!,
     kind: 'payout_issue',
-    subject: 'How long does PayPal take?',
+    subject: 'How long does UPI take?',
     status: 'resolved',
   })
   .returning({ id: tickets.id })
@@ -565,7 +576,7 @@ await db.insert(ticketMessages).values([
   {
     ticketId: ticket2!.id,
     authorAdminId: adminId,
-    body: 'PayPal payouts usually settle within one business day of approval.',
+    body: 'UPI transfers usually land within a few hours of approval.',
   },
 ])
 

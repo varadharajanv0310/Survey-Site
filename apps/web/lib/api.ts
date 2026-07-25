@@ -40,9 +40,21 @@ export const post = <T>(path: string, data?: unknown) =>
 /** Points are integers; render them with separators so 26743 reads as 26,743. */
 export const formatPoints = (points: number) => points.toLocaleString('en-US')
 
-/** Amounts arrive as integer minor units. Never do currency math in floats. */
-export const formatMoney = (minor: number, currency = 'USD') =>
-  new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(minor / 100)
+/**
+ * Amounts arrive as integer minor units. Never do currency math in floats —
+ * the division here is the last step, for display only.
+ *
+ * Locale follows the currency: ₹1,20,000 groups differently from $120,000, and
+ * getting that wrong is immediately obvious to the audience we are paying.
+ */
+const LOCALES: Record<string, string> = { INR: 'en-IN', USD: 'en-US' }
+
+export const formatMoney = (minor: number, currency = 'INR') =>
+  new Intl.NumberFormat(LOCALES[currency] ?? 'en-US', {
+    style: 'currency',
+    currency,
+    maximumFractionDigits: minor % 100 === 0 ? 0 : 2,
+  }).format(minor / 100)
 
 export const formatDate = (value: string | Date) =>
   new Date(value).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })

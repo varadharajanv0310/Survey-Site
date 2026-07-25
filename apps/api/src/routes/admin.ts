@@ -12,7 +12,13 @@ import {
   tickets,
   users,
 } from '@app/db/schema'
-import { ledgerKeys, queueJobId, type SettingsShape } from '@app/core'
+import {
+  baseMicrosForPoints,
+  currencyConfig,
+  ledgerKeys,
+  queueJobId,
+  type SettingsShape,
+} from '@app/core'
 import type { AppContext } from '../context'
 import { ADMIN_COOKIE, cookieOptions, requireAdmin } from '../auth-hook'
 
@@ -469,11 +475,17 @@ export async function registerAdminRoutes(app: FastifyInstance, ctx: AppContext)
       ORDER BY gross_micros DESC
     `)) as unknown as Record<string, string>[]
 
+    const currency = currencyConfig(settings)
+
     const report = rows.map((r) => {
       const gross = Number(r.gross_micros)
       const reversed = Number(r.reversed_micros)
       const pointsAwarded = Number(r.points_awarded)
-      const paidToUsersMicros = Math.floor((pointsAwarded * 1_000_000) / settings.points_per_usd)
+      // Points are denominated in the payout currency; converted back to USD
+      // so the margin reconciles against what the network actually invoices.
+      const paidToUsersMicros = Math.floor(
+        baseMicrosForPoints(pointsAwarded, currency) / currency.usdToBaseRate,
+      )
       const netRevenue = gross - reversed
       const credits = Number(r.credits)
 

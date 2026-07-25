@@ -1,12 +1,29 @@
 import { sql } from 'drizzle-orm'
 import { createDb, type Database } from '@app/db'
 
+/**
+ * Tests get their own database, and will not fall back to DATABASE_URL.
+ *
+ * The earlier version defaulted to the dev database, and `npm test` duly
+ * truncated a freshly seeded one. Losing seed data is cheap; the same mistake
+ * pointed at anything real is not, so the guard below refuses to run at all
+ * against a database whose name does not end in `_test`.
+ */
 export const TEST_DATABASE_URL =
-  process.env.TEST_DATABASE_URL ??
-  process.env.DATABASE_URL ??
-  'postgres://rewards:rewards@localhost:5433/rewards'
+  process.env.TEST_DATABASE_URL ?? 'postgres://rewards:rewards@localhost:5433/rewards_test'
+
+function assertTestDatabase(url: string): void {
+  const name = new URL(url).pathname.replace(/^\//, '')
+  if (!name.endsWith('_test')) {
+    throw new Error(
+      `refusing to run destructive tests against database "${name}". ` +
+        'Point TEST_DATABASE_URL at a database whose name ends in "_test".',
+    )
+  }
+}
 
 export function testDb(): Database {
+  assertTestDatabase(TEST_DATABASE_URL)
   return createDb(TEST_DATABASE_URL)
 }
 
@@ -17,6 +34,7 @@ export function testDb(): Database {
  * the guarantee we are trying to test.
  */
 export async function resetDb(db: Database): Promise<void> {
+  assertTestDatabase(TEST_DATABASE_URL)
   await db.execute(sql`
     TRUNCATE TABLE
       ledger_entries, completions, postback_events, payouts, payout_transitions,

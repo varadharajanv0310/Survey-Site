@@ -9,14 +9,41 @@ export type SettingsShape = {
   // --- points economy ----------------------------------------------------
 
   /**
-   * How many points one US dollar of *user-facing value* is worth.
-   * 1000 => the user sees "1,000 points" for $1.00.
+   * The currency users are actually paid in. ISO-4217.
    *
-   * Large numbers are the convention in this category for a reason: "you
-   * earned 850 points" reads better than "you earned $0.85", and it decouples
-   * the display from any one payout currency.
+   * Networks pay US in USD regardless — offer walls and survey walls quote
+   * dollars — so this is the currency at the *payout* boundary, not the
+   * ingestion one.
    */
-  points_per_usd: number
+  base_currency: string
+
+  /** Minor units per major unit: 100 paise per rupee, 100 cents per dollar. */
+  currency_minor_units: number
+
+  /**
+   * Points per one unit of `base_currency`.
+   * 10 => the user sees "10 points" for ₹1, and 5,000 points for ₹500.
+   *
+   * Large point numbers are the convention in this category because "you
+   * earned 850 points" reads better than "you earned ₹85", and it decouples
+   * the display from whichever currency we settle in.
+   */
+  points_per_currency_unit: number
+
+  /**
+   * How many units of `base_currency` one US dollar buys.
+   *
+   * This is the single most under-appreciated number in the whole config.
+   * Networks pay us in dollars and we owe users in rupees, so we carry the
+   * FX exposure between a completion and a payout. If the dollar weakens
+   * against the rupee, our revenue buys fewer rupees while the points we
+   * already promised stay fixed, and the margin silently shrinks.
+   *
+   * Set it conservatively (below spot), review it, and note that changing it
+   * never re-prices history: every ledger entry stores the config version it
+   * was written under.
+   */
+  usd_to_base_rate: number
 
   /** Our default cut in basis points. 3500 = we keep 35%, user gets 65%. */
   default_revenue_share_bps: number
@@ -93,16 +120,22 @@ export type SettingsShape = {
 }
 
 export const DEFAULT_SETTINGS: SettingsShape = {
-  points_per_usd: 1000,
+  base_currency: 'INR',
+  currency_minor_units: 100,
+  points_per_currency_unit: 10, // 10 points = ₹1
+  // Deliberately below spot. See the note on the field: we hold the FX risk
+  // between earning a dollar and paying out a rupee.
+  usd_to_base_rate: 85,
+
   default_revenue_share_bps: 3500,
   min_award_points: 1,
 
   hold_window_hours_offer_wall: 72,
   hold_window_hours_survey_wall: 24,
 
-  min_redemption_points: 500,
+  min_redemption_points: 5_000, // ₹500
   review_first_payout: true,
-  review_payout_above_points: 10_000,
+  review_payout_above_points: 20_000, // ₹2,000
 
   referral_bonus_points: 500,
   referral_commission_bps: 1000,
@@ -123,7 +156,11 @@ export const DEFAULT_SETTINGS: SettingsShape = {
 }
 
 export const SETTING_DESCRIPTIONS: Record<keyof SettingsShape, string> = {
-  points_per_usd: 'Points shown to the user per $1.00 of user-facing value.',
+  base_currency: 'Currency users are paid in (ISO-4217). Networks still pay us in USD.',
+  currency_minor_units: 'Minor units per major unit — 100 paise per rupee.',
+  points_per_currency_unit: 'Points per 1 unit of base currency. 10 = 10 points per rupee.',
+  usd_to_base_rate:
+    'Base-currency units per USD. We carry the FX risk between earning and paying out, so keep this below spot.',
   default_revenue_share_bps: 'Our cut in basis points when a network has no override.',
   min_award_points: 'Floor for any non-zero award, so tiny screenouts never award 0.',
   hold_window_hours_offer_wall: 'Hours before offer-wall points become withdrawable.',

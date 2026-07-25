@@ -13,7 +13,14 @@ import {
   users,
   wallPlacements,
 } from '@app/db/schema'
-import { PayoutError, ledgerKeys, minorUnitsForPoints, queueJobId, signUserToken } from '@app/core'
+import {
+  PayoutError,
+  currencyConfig,
+  ledgerKeys,
+  minorUnitsForPoints,
+  queueJobId,
+  signUserToken,
+} from '@app/core'
 import type { AppContext } from '../context'
 import { requireUser } from '../auth-hook'
 
@@ -25,11 +32,16 @@ export async function registerUserRoutes(app: FastifyInstance, ctx: AppContext) 
   app.get('/me/balance', auth, async (request) => {
     const balance = await ctx.ledger.getBalance(request.userId!)
     const { values: settings } = await ctx.settingsService.get()
+    const currency = currencyConfig(settings)
     return {
       ...balance,
       // Shown alongside the points so the number means something to the user.
-      estimatedValueMinor: minorUnitsForPoints(balance.posted, settings.points_per_usd),
-      currency: 'USD',
+      estimatedValueMinor: minorUnitsForPoints(balance.posted, currency),
+      withdrawableValueMinor: minorUnitsForPoints(balance.withdrawable, currency),
+      currency: currency.baseCurrency,
+      minorUnitsPerMajor: currency.minorUnitsPerMajor,
+      // Sent so the client never hardcodes the rate to render an estimate.
+      pointsPerUnit: currency.pointsPerUnit,
       minRedemptionPoints: settings.min_redemption_points,
     }
   })

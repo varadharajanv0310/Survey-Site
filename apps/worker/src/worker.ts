@@ -12,6 +12,7 @@ import {
   PayoutService,
   SettingsService,
   awardPoints,
+  currencyConfig,
   queueJobId,
   type CanonicalCompletion,
 } from '@app/core'
@@ -178,7 +179,7 @@ async function syncCatalogs(): Promise<void> {
         const points = awardPoints({
           grossUsdMicros: offer.grossUsdMicros,
           revenueShareBps: network.revenueShareBps,
-          pointsPerUsd: settings.points_per_usd,
+          currency: currencyConfig(settings),
           minAwardPoints: settings.min_award_points,
         })
 

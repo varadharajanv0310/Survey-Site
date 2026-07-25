@@ -11,6 +11,8 @@ type Balance = {
   pending: number
   lifetimeEarned: number
   estimatedValueMinor: number
+  withdrawableValueMinor: number
+  currency: string
   minRedemptionPoints: number
 }
 
@@ -59,14 +61,14 @@ export default function WalletPage() {
               <Stat
                 label="Balance"
                 value={`${formatPoints(balance.posted)} pts`}
-                hint={`≈ ${formatMoney(balance.estimatedValueMinor)}`}
+                hint={`≈ ${formatMoney(balance.estimatedValueMinor, balance.currency)}`}
               />
             </Card>
             <Card>
               <Stat
                 label="Available to cash out"
                 value={`${formatPoints(balance.withdrawable)} pts`}
-                hint={`Minimum ${formatPoints(balance.minRedemptionPoints)} pts`}
+                hint={`${formatMoney(balance.withdrawableValueMinor, balance.currency)} · minimum ${formatPoints(balance.minRedemptionPoints)} pts`}
               />
             </Card>
             <Card>

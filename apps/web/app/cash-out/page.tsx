@@ -4,7 +4,16 @@ import { useEffect, useState } from 'react'
 import { api, formatDate, formatMoney, formatPoints, post } from '@/lib/api'
 import { Badge, Button, Card, Field, Input, Shell } from '@/components/shell'
 
-type Balance = { withdrawable: number; minRedemptionPoints: number; estimatedValueMinor: number }
+type Balance = {
+  withdrawable: number
+  minRedemptionPoints: number
+  estimatedValueMinor: number
+  withdrawableValueMinor: number
+  currency: string
+  minorUnitsPerMajor: number
+  /** Sent by the API so the client never hardcodes the conversion rate. */
+  pointsPerUnit: number
+}
 
 type Payout = {
   id: string
@@ -39,16 +48,17 @@ const STATE_LABEL: Record<string, string> = {
   cancelled: 'Cancelled',
 }
 
+// UPI first: it is how this audience actually expects to be paid.
 const METHODS = [
-  { value: 'paypal', label: 'PayPal', placeholder: 'you@example.com' },
-  { value: 'upi', label: 'UPI', placeholder: 'you@okbank' },
+  { value: 'upi', label: 'UPI', placeholder: 'you@okhdfcbank' },
   { value: 'giftcard', label: 'Gift card', placeholder: 'you@example.com' },
+  { value: 'paypal', label: 'PayPal', placeholder: 'you@example.com' },
 ] as const
 
 export default function CashOutPage() {
   const [balance, setBalance] = useState<Balance | null>(null)
   const [payouts, setPayouts] = useState<Payout[]>([])
-  const [method, setMethod] = useState<(typeof METHODS)[number]['value']>('paypal')
+  const [method, setMethod] = useState<(typeof METHODS)[number]['value']>('upi')
   const [destination, setDestination] = useState('')
   const [points, setPoints] = useState('')
   const [error, setError] = useState('')
@@ -114,7 +124,15 @@ export default function CashOutPage() {
               <strong className="font-semibold text-[var(--color-ink)]">
                 {formatPoints(balance.withdrawable)} points
               </strong>{' '}
-              available. Minimum {formatPoints(balance.minRedemptionPoints)}.
+              available ({formatMoney(balance.withdrawableValueMinor, balance.currency)}). Minimum{' '}
+              {formatPoints(balance.minRedemptionPoints)} points (
+              {formatMoney(
+                Math.floor(
+                  (balance.minRedemptionPoints * balance.minorUnitsPerMajor) / balance.pointsPerUnit,
+                ),
+                balance.currency,
+              )}
+              ).
             </p>
           )}
 
@@ -160,9 +178,14 @@ export default function CashOutPage() {
 
             {points && balance && (
               <p className="text-xs text-[var(--color-muted)]">
-                You will receive approximately{' '}
+                You will receive{' '}
                 <strong className="text-[var(--color-ink)]">
-                  {formatMoney(Math.floor((Number(points) * 100) / 1000))}
+                  {formatMoney(
+                    Math.floor(
+                      (Number(points) * balance.minorUnitsPerMajor) / balance.pointsPerUnit,
+                    ),
+                    balance.currency,
+                  )}
                 </strong>
                 .
               </p>
