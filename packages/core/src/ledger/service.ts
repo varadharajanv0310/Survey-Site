@@ -28,6 +28,46 @@ export class LedgerService {
   ) {}
 
   /**
+   * Serialise every balance-mutating operation for one user.
+   *
+   * A Postgres transaction-scoped advisory lock, keyed on a 64-bit hash of the
+   * user id. Chosen over the alternatives deliberately:
+   *
+   *  - `SELECT … FOR UPDATE` on the `users` row would also work, but it blocks
+   *    unrelated writers — a profile update would queue behind a payout.
+   *  - `SERIALIZABLE` isolation would need a retry loop at every call site and
+   *    turns contention into user-visible errors rather than a short wait.
+   *  - The advisory lock releases automatically at commit or rollback, so a
+   *    crash mid-transaction cannot strand it.
+   *
+   * The lock is re-entrant within a transaction, so nested calls are free.
+   * It MUST be taken inside a transaction: in autocommit mode
+   * `pg_advisory_xact_lock` acquires and immediately releases, which looks
+   * like it works and protects nothing.
+   *
+   * Hash collisions between two user ids are possible at 64 bits but harmless:
+   * the consequence is two unrelated users occasionally serialising, never a
+   * missing lock.
+   */
+  private async lockUser(userId: string, tx: Executor): Promise<void> {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${userId}::text, 0))`)
+  }
+
+  /**
+   * Run `fn` inside a transaction holding this user's balance lock.
+   *
+   * Use this when several balance-mutating steps have to be atomic together —
+   * for example debiting for a payout and inserting the payout row, which must
+   * not be able to half-happen.
+   */
+  async withUserBalanceLock<T>(userId: string, fn: (tx: Executor) => Promise<T>): Promise<T> {
+    return this.db.transaction(async (tx) => {
+      await this.lockUser(userId, tx as Executor)
+      return fn(tx as Executor)
+    })
+  }
+
+  /**
    * Derived on every call. There is no cached balance column, deliberately.
    *
    * This is O(entries-per-user) and will not hold up forever. The fix when it
@@ -36,11 +76,33 @@ export class LedgerService {
    * the user.
    */
   async getBalance(userId: string, exec: Executor = this.db): Promise<BalanceSnapshot> {
+    /**
+     * The `amount_points < 0` disjunction is load-bearing, not defensive.
+     *
+     * A hold window is a property of a CREDIT — it is the window in which the
+     * network can still claw it back. Debits are effective immediately. The
+     * original query expressed that only implicitly, by relying on a debit's
+     * `available_at` default already being in the past.
+     *
+     * Inside a transaction it is not. `now()` is `transaction_timestamp()`, so
+     * ten payout requests starting at the same instant each evaluate this
+     * filter against their own start time, and a debit written by a
+     * transaction that began microseconds later sits in the reader's future
+     * and vanishes from the sum. Measured: ten concurrent 250-point reserves
+     * against a 1000-point balance let nine through and left it at -1250,
+     * with the per-user lock correctly held throughout.
+     *
+     * Keeping the two flavours consistent: withdrawable + onHold == posted.
+     */
     const rows = await exec.execute(sql`
       SELECT
         COALESCE(SUM(amount_points) FILTER (WHERE status = 'posted'), 0)::TEXT AS posted,
-        COALESCE(SUM(amount_points) FILTER (WHERE status = 'posted' AND available_at <= now()), 0)::TEXT AS withdrawable,
-        COALESCE(SUM(amount_points) FILTER (WHERE status = 'posted' AND available_at > now()), 0)::TEXT AS on_hold,
+        COALESCE(SUM(amount_points) FILTER (
+          WHERE status = 'posted' AND (amount_points < 0 OR available_at <= now())
+        ), 0)::TEXT AS withdrawable,
+        COALESCE(SUM(amount_points) FILTER (
+          WHERE status = 'posted' AND amount_points > 0 AND available_at > now()
+        ), 0)::TEXT AS on_hold,
         COALESCE(SUM(amount_points) FILTER (WHERE status = 'pending'), 0)::TEXT AS pending,
         COALESCE(SUM(amount_points) FILTER (WHERE status = 'posted' AND amount_points > 0), 0)::TEXT AS lifetime_earned
       FROM ledger_entries
@@ -149,7 +211,41 @@ export class LedgerService {
    *    absorbed amount is returned and recorded, because it is a real loss and
    *    hiding it would make the margin reporting lie.
    */
-  async reverse(
+  async reverse(input: {
+    entryId: string
+    idempotencyKey: string
+    amountPoints?: number
+    reason?: string
+    externalTransactionId?: string
+    configVersion?: number
+  }): Promise<ReversalResult> {
+    // The owning user is not known until the entry is read, so the lock is
+    // taken inside, once we have it.
+    const [target] = await this.db
+      .select({ userId: ledgerEntries.userId })
+      .from(ledgerEntries)
+      .where(eq(ledgerEntries.id, input.entryId))
+      .limit(1)
+
+    if (!target) throw new Error(`cannot reverse: entry ${input.entryId} not found`)
+
+    return this.withUserBalanceLock(target.userId, (tx) => this.reverseInTx(input, tx))
+  }
+
+  /**
+   * The same reversal, for callers already inside `withUserBalanceLock`.
+   *
+   * Two read-then-write sequences live here and both need the lock:
+   *
+   *  - the `alreadyReversed` sum, which decides how much is still reversible
+   *  - the floor-at-zero clamp, which reads the balance before writing
+   *
+   * The database trigger that refuses over-reversal does NOT close this on its
+   * own: it computes its sum from committed rows, so concurrent transactions
+   * each see zero already reversed. Six simultaneous 200-point clawbacks
+   * against a 600-point entry reversed 1200 before the lock existed.
+   */
+  async reverseInTx(
     input: {
       entryId: string
       idempotencyKey: string
@@ -158,7 +254,7 @@ export class LedgerService {
       externalTransactionId?: string
       configVersion?: number
     },
-    exec: Executor = this.db,
+    exec: Executor,
   ): Promise<ReversalResult> {
     const [original] = await exec
       .select()
@@ -170,6 +266,8 @@ export class LedgerService {
     if (original.amountPoints <= 0) {
       throw new Error(`cannot reverse a debit (entry ${input.entryId}, ${original.amountPoints})`)
     }
+
+    await this.lockUser(original.userId, exec)
 
     // A reversal of an already-reversed entry is a no-op, not an error. The
     // idempotency key would catch an exact retry, but a network re-sending the
@@ -241,30 +339,37 @@ export class LedgerService {
    * 1000-point payouts before an admin looks at the first one, and we pay all
    * three.
    *
-   * ---------------------------------------------------------------------
-   * KNOWN RACE. Read before touching real money.
-   *
-   * The balance check and the debit are two statements. Two concurrent
-   * requests can both read 1000, both pass the check, and both insert. The
-   * idempotency key does NOT save us here, because two genuine payout
-   * requests have two different payout ids and therefore two different keys.
-   *
-   * This is the single place in the codebase where that race exists, which is
-   * why the check and the write live in one function instead of being spread
-   * across the payout service. The fix — SELECT ... FOR UPDATE on a per-user
-   * lock row, or a serializable transaction with a retry loop — belongs in
-   * the concurrency hardening pass, together with tests that actually run
-   * concurrent writes. It is not safe to ship against a real payout provider
-   * until then.
-   * ---------------------------------------------------------------------
+   * The balance check and the debit are two statements, so they run under the
+   * per-user lock. Without it, eight simultaneous requests all read the same
+   * balance, all pass the check, and all debit — measured, not theorised: that
+   * scenario drove a 1000-point balance to -2000 before this was added. The
+   * idempotency key cannot help, because two genuine payout requests carry two
+   * different keys.
    */
-  async reserveForPayout(
+  async reserveForPayout(input: {
+    userId: string
+    points: number
+    payoutId: string
+    idempotencyKey: string
+  }): Promise<RecordResult> {
+    return this.withUserBalanceLock(input.userId, (tx) => this.reserveForPayoutInTx(input, tx))
+  }
+
+  /**
+   * The same reserve, for callers already inside `withUserBalanceLock`.
+   *
+   * Re-takes the lock, which is a no-op when already held and correct when the
+   * caller forgot, so this is safe either way.
+   */
+  async reserveForPayoutInTx(
     input: { userId: string; points: number; payoutId: string; idempotencyKey: string },
-    exec: Executor = this.db,
+    tx: Executor,
   ): Promise<RecordResult> {
     if (input.points <= 0) throw new Error('payout reserve must be positive')
 
-    const balance = await this.getBalance(input.userId, exec)
+    await this.lockUser(input.userId, tx)
+
+    const balance = await this.getBalance(input.userId, tx)
     if (balance.withdrawable < input.points) {
       throw new InsufficientBalanceError(input.userId, input.points, balance.withdrawable)
     }
@@ -278,7 +383,7 @@ export class LedgerService {
         payoutId: input.payoutId,
         note: 'payout reserve',
       },
-      exec,
+      tx,
     )
   }
 

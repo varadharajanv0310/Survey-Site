@@ -112,37 +112,61 @@ export class PayoutService {
     const payoutId = crypto.randomUUID()
     const currency = currencyConfig(settings)
     const amountMinor = minorUnitsForPoints(input.points, currency)
+    const destinationHash = hashDestination(input.destination, this.deps.destinationSecret)
 
-    // Reserve first. If the balance is short this throws and no payout row is
-    // created, so there is never a payout without a matching debit.
-    const reserve = await this.deps.ledger.reserveForPayout({
-      userId: input.userId,
-      points: input.points,
-      payoutId,
-      idempotencyKey: ledgerKeys.redeem(payoutId),
+    /**
+     * The debit and the payout row are one atomic unit, under the user's
+     * balance lock.
+     *
+     * Two separate statements would leave a window where a crash — or simply a
+     * failed insert — debits the user and creates no payout to show for it.
+     * The points would be gone with nothing in the UI or the admin queue
+     * explaining where, and the ledger being append-only means that is not
+     * quietly fixable afterwards.
+     */
+    await this.deps.ledger.withUserBalanceLock(input.userId, async (tx) => {
+      const reserve = await this.deps.ledger.reserveForPayoutInTx(
+        {
+          userId: input.userId,
+          points: input.points,
+          payoutId,
+          idempotencyKey: ledgerKeys.redeem(payoutId),
+        },
+        tx,
+      )
+
+      await tx.insert(payouts).values({
+        id: payoutId,
+        userId: input.userId,
+        requestedPoints: input.points,
+        amountMinor,
+        currency: currency.baseCurrency,
+        configVersion: this.deps.configVersion,
+        method: input.method,
+        destinationMasked: maskDestination(input.destination),
+        destinationHash,
+        state: 'requested',
+        providerKey: this.deps.provider.key,
+        reserveEntryId: reserve.entry.id,
+        idempotencyKey: `payout:${payoutId}`,
+        requestedIp: input.ip ?? null,
+      })
+
+      await tx.insert(payoutTransitions).values({
+        payoutId,
+        fromState: null,
+        toState: 'requested',
+        actorType: 'user',
+        actorId: input.userId,
+        reason: 'payout requested',
+      })
     })
-
-    await this.db.insert(payouts).values({
-      id: payoutId,
-      userId: input.userId,
-      requestedPoints: input.points,
-      amountMinor,
-      currency: currency.baseCurrency,
-      configVersion: this.deps.configVersion,
-      method: input.method,
-      destinationMasked: maskDestination(input.destination),
-      destinationHash: hashDestination(input.destination, this.deps.destinationSecret),
-      state: 'requested',
-      providerKey: this.deps.provider.key,
-      reserveEntryId: reserve.entry.id,
-      idempotencyKey: `payout:${payoutId}`,
-      requestedIp: input.ip ?? null,
-    })
-
-    await this.recordTransition(payoutId, null, 'requested', 'user', input.userId, 'payout requested')
 
     // Fraud runs after the reserve, so a denied payout still leaves the points
     // debited and awaiting an admin decision rather than instantly refunded.
+    // Deliberately outside the transaction above. Fraud checks issue several
+    // queries and can call a third party; holding the user's balance lock
+    // across that would block their earnings for the duration.
     const ctx: FraudContext = {
       db: this.db,
       settings,
@@ -155,7 +179,7 @@ export class PayoutService {
         payoutId,
         userId: input.userId,
         points: input.points,
-        destinationHash: hashDestination(input.destination, this.deps.destinationSecret),
+        destinationHash,
         ip: input.ip,
       },
       ctx,
