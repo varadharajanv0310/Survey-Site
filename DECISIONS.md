@@ -47,12 +47,22 @@ every completion before the money actually arrives.
 Changing the rate never re-prices history — every ledger entry stores the
 config version it was written under.
 
-### Keeping the referral bonus unchanged made it weaker
+### The minimum went up ~12x in real terms; the referral did not move
 
-500 points used to be $0.50 against a $0.50 minimum cash-out: a referral paid
-for a full withdrawal. It is now ₹50 against a ₹500 minimum, so it covers a
-tenth of one. The number is identical; the incentive is materially smaller.
-Worth revisiting once you see real referral behaviour.
+The referral bonus is unchanged in value: 500 points was $0.50 ≈ ₹42.50 before,
+and is ₹50 now. Nothing to revisit there.
+
+What did change is the withdrawal threshold. The old 500-point minimum was
+$0.50, about ₹42.50. The new one is ₹500 — roughly twelve times higher in real
+terms. That is a deliberate choice and a normal minimum for the category, but
+it changes user behaviour in ways worth watching:
+
+- A user earning ₹50 a day now waits ten days for a first cash-out instead of
+  clearing one on day one. First-payout drop-off is the metric to watch.
+- Higher minimums suppress fraud (each fake account has to earn 12x more before
+  it can extract anything) and cut per-payout fees, which is the upside.
+- One referral bonus used to fund an entire withdrawal. It now covers a tenth
+  of one — not because the referral shrank, but because the bar moved.
 
 ### Indian offer economics are thinner
 
