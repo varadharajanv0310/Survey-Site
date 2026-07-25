@@ -16,6 +16,11 @@ in a diff. Split into ones already answered, and ones waiting on you.
 | 5 | Admin accounts | **Separate table** from `users`, so an admin compromise is not a user compromise. |
 | 6 | Money units | **Integer USD micros** internally, minor units at the payout boundary. No floats anywhere. |
 | 7 | Network secrets | **Env vars, referenced by name** from `networks.secret_ref`. Never in the database. |
+| 8 | Password hashing | **scrypt from node's stdlib**, not argon2id. argon2 is the better algorithm and the OWASP first choice; scrypt is the accepted second. The trade buys zero native dependencies, which matters when developing on Windows and deploying on Linux. Stored hashes are prefixed so both can coexist if we switch. |
+| 9 | Time authority | **The database clock, always.** Hold windows are computed as `now() + interval` server-side. Taking `new Date()` in the app and comparing it to `now()` in a query compares two machines' clocks — locally that drift was already 300ms, enough that freshly credited points were briefly not withdrawable. |
+| 10 | Queue job ids | **Hashed, not concatenated.** BullMQ rejects ids containing `:`, and network transaction ids are arbitrary strings we do not control. |
+| 11 | Held vs rejected credits | A flagged credit is **held pending review**, never silently dropped. Most flags are real users on shared infrastructure. |
+| 12 | Admin sessions | **Database-backed** with a 12-hour TTL, in their own table. An in-memory map would drop every admin session on restart and could not work across processes. |
 
 ---
 
