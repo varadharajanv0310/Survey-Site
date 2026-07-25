@@ -1,0 +1,29 @@
+{
+  "name": "rewards-platform",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "db:generate": "npm run generate -w @app/db",
+    "db:migrate": "npm run migrate -w @app/db",
+    "db:studio": "npm run studio -w @app/db",
+    "db:seed": "npm run seed -w @app/db",
+    "up": "docker compose up -d postgres redis",
+    "down": "docker compose down",
+    "typecheck": "tsc -b --pretty",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}
