@@ -17,6 +17,10 @@
     "db:seed": "npm run seed -w @app/db",
     "up": "docker compose up -d postgres redis",
     "down": "docker compose down",
+    "api": "npm run start -w @app/api",
+    "worker": "npm run start -w @app/worker",
+    "web": "npm run dev -w @app/web",
+    "simulate": "npm run start -w @app/simulator",
     "typecheck": "tsc -b --pretty",
     "test": "vitest run"
   },

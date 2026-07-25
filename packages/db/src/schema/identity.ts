@@ -163,6 +163,32 @@ export const adminUsers = pgTable(
   (t) => [uniqueIndex('admin_users_email_uq').on(t.email)],
 )
 
+/**
+ * Separate from `sessions` rather than sharing it with a nullable user_id.
+ * Keeping the two apart means a query that forgets to filter by principal type
+ * cannot accidentally treat a user session as an admin one.
+ *
+ * Shorter TTL than user sessions: an admin session can approve payouts.
+ */
+export const adminSessions = pgTable(
+  'admin_sessions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    adminId: uuid('admin_id')
+      .notNull()
+      .references(() => adminUsers.id, { onDelete: 'cascade' }),
+    tokenHash: text('token_hash').notNull(),
+    expiresAt: ts('expires_at').notNull(),
+    revokedAt: ts('revoked_at'),
+    ip: inet('ip'),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    uniqueIndex('admin_sessions_token_hash_uq').on(t.tokenHash),
+    index('admin_sessions_admin_idx').on(t.adminId),
+  ],
+)
+
 /** Every mutating admin action. Append-only. */
 export const auditLog = pgTable(
   'audit_log',

@@ -10,7 +10,7 @@
   },
   "scripts": {
     "generate": "drizzle-kit generate",
-    "migrate": "tsx src/migrate.ts",
+    "migrate": "tsx --env-file-if-exists=../../.env src/migrate.ts",
     "push": "drizzle-kit push",
     "studio": "drizzle-kit studio",
     "seed": "tsx src/seed.ts"
@@ -20,6 +20,7 @@
     "postgres": "^3.4.5"
   },
   "devDependencies": {
+    "@app/core": "*",
     "drizzle-kit": "^0.30.1"
   }
 }

@@ -1,0 +1,17 @@
+{
+  "name": "@app/worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx --env-file-if-exists=../../.env watch src/worker.ts",
+    "start": "tsx --env-file-if-exists=../../.env src/worker.ts"
+  },
+  "dependencies": {
+    "@app/core": "*",
+    "@app/db": "*",
+    "bullmq": "^5.34.5",
+    "drizzle-orm": "^0.38.3",
+    "ioredis": "^5.4.2"
+  }
+}

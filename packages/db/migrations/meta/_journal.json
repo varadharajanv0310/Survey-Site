@@ -15,6 +15,13 @@
       "when": 1784996627004,
       "tag": "0001_ledger_immutability",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1784998317028,
+      "tag": "0002_absent_iron_man",
+      "breakpoints": true
     }
   ]
 }
