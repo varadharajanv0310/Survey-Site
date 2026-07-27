@@ -7,6 +7,7 @@ import { FraudPipeline } from '../fraud/pipeline'
 import { LedgerService } from '../ledger/service'
 import { ledgerKeys } from '../ledger/keys'
 import { awardPoints, currencyConfig } from '../money'
+import { holdHoursFor } from '../levels'
 import { verifyUserToken } from '../auth/tokens'
 
 export type ProcessOutcome = {
@@ -209,10 +210,16 @@ export class CompletionProcessor {
      */
     const held = evaluation.verdict === 'review'
 
-    const holdHours =
+    const baseHoldHours =
       args.networkKind === 'survey_wall'
         ? settings.hold_window_hours_survey_wall
         : settings.hold_window_hours_offer_wall
+
+    // A user's level shortens their hold. Computed from the ledger at credit
+    // time and baked into this entry's `available_at`, so a later level-up
+    // never retroactively rewrites what an existing entry promised.
+    const balance = await this.deps.ledger.getBalance(userId)
+    const holdHours = holdHoursFor(baseHoldHours, balance.lifetimeEarned)
 
     const entry = await this.deps.ledger.record({
       userId,

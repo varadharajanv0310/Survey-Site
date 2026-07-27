@@ -1,14 +1,16 @@
 'use client'
 
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
-import { useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { Suspense, useState } from 'react'
 import { post } from '@/lib/api'
 import { getFingerprint } from '@/lib/fingerprint'
-import { Button, Field, Input } from '@/components/shell'
+import { AuthLayout } from '@/components/auth-layout'
+import { Button, Field, Input, Note } from '@/components/ui'
 
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter()
+  const params = useSearchParams()
   const [email, setEmail] = useState('demo@example.com')
   const [password, setPassword] = useState('password123')
   const [error, setError] = useState('')
@@ -24,66 +26,74 @@ export default function LoginPage() {
         password,
         deviceFingerprint: await getFingerprint(),
       })
-      router.push('/earn')
+      router.push('/wallet')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'sign in failed')
+      setError(err instanceof Error ? err.message : 'Could not sign in')
     } finally {
       setBusy(false)
     }
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center px-5">
-      <div className="w-full max-w-sm">
-        <h1 className="text-2xl font-semibold tracking-tight">Sign in</h1>
-        <p className="mt-1 text-sm text-[var(--color-muted)]">
-          Seeded accounts use the password <code className="font-mono">password123</code>.
-        </p>
+    <>
+      {params.get('reset') === '1' && (
+        <Note>Password changed. Sign in with your new one.</Note>
+      )}
 
-        <form onSubmit={submit} className="mt-6 space-y-4">
-          <Field label="Email">
-            <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
-          </Field>
-          <Field label="Password">
-            <Input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-            />
-          </Field>
+      <form onSubmit={submit} className="mt-4 space-y-4">
+        <Field label="Email">
+          <Input
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            autoComplete="email"
+            required
+          />
+        </Field>
 
-          {error && <p className="text-sm text-[var(--color-negative)]">{error}</p>}
+        <Field label="Password">
+          <Input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            autoComplete="current-password"
+            required
+          />
+        </Field>
 
-          <Button type="submit" disabled={busy} className="w-full">
-            {busy ? 'Signing in…' : 'Sign in'}
-          </Button>
-        </form>
+        {error && <Note tone="negative">{error}</Note>}
 
-        <div className="mt-5 space-y-2 text-sm text-[var(--color-muted)]">
-          <p>
-            <Link href="/reset" className="font-medium text-[var(--color-brand)]">
-              Forgot your password?
-            </Link>
-          </p>
-          <p>
-            No account?{' '}
-            <Link href="/signup" className="font-medium text-[var(--color-brand)]">
-              Create one
-            </Link>
-          </p>
-        </div>
+        <Button type="submit" loading={busy} className="w-full">
+          Sign in
+        </Button>
+      </form>
 
-        <p className="mt-8 text-xs text-[var(--color-muted)]">
-          <Link href="/legal/privacy" className="hover:underline">
-            Privacy
+      <div className="mt-5 space-y-2 text-[14px]">
+        <p>
+          <Link href="/reset" className="font-medium text-[var(--accent)]">
+            Forgot your password?
           </Link>
-          {' · '}
-          <Link href="/legal/terms" className="hover:underline">
-            Terms
+        </p>
+        <p className="text-[var(--ink-3)]">
+          No account?{' '}
+          <Link href="/signup" className="font-medium text-[var(--accent)]">
+            Create one
           </Link>
         </p>
       </div>
-    </div>
+    </>
+  )
+}
+
+export default function LoginPage() {
+  return (
+    <AuthLayout
+      title="Sign in"
+      lede="Seeded demo accounts use the password password123."
+    >
+      <Suspense>
+        <LoginForm />
+      </Suspense>
+    </AuthLayout>
   )
 }

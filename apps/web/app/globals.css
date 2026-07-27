@@ -1,19 +1,209 @@
 @import 'tailwindcss';
 
+/* ===========================================================================
+   Two committed visual worlds, switchable at the root.
+   Tokens only — no component styling lives here.
+
+   TALLY  statement-led. Earnings are money in an account. Amber on graphite,
+          hairlines and no shadows, every figure tabular and right-aligned.
+   TEMPO  game-led. Earning has a weekly rhythm. Violet/cyan/lime mesh, heavy
+          frost, 28px radii.
+
+   Both are dark because the use scene is dark: a phone, in the evening, on
+   the sofa or a commute. Not because dark is the category default.
+   =========================================================================== */
+
 @theme {
-  --color-ink: #0b1120;
-  --color-surface: #ffffff;
-  --color-muted: #64748b;
-  --color-line: #e2e8f0;
-  --color-brand: #4f46e5;
-  --color-brand-dark: #4338ca;
-  --color-positive: #059669;
-  --color-negative: #dc2626;
-  --color-warn: #d97706;
+  --font-instrument: var(--font-instrument-sans);
+  --font-plex: var(--font-plex-mono);
+  --font-outfit: var(--font-outfit);
+}
+
+:root,
+[data-theme='tally'] {
+  --bg: #0a0b0d;
+  --bg-tint-a: rgba(44, 47, 168, 0.16); /* navy, top-left */
+  --bg-tint-b: rgba(201, 139, 46, 0.13); /* amber, bottom-right */
+
+  --surface: rgba(255, 255, 255, 0.05);
+  --surface-2: rgba(255, 255, 255, 0.075);
+  --surface-solid: #141519;
+  --hairline: rgba(255, 255, 255, 0.09);
+  --hairline-strong: rgba(255, 255, 255, 0.16);
+
+  --ink: #f4f2ee;
+  --ink-2: #b9bbc0;
+  --ink-3: #9c9e9f; /* 5.4:1 on --bg; the floor for body text */
+  --ink-4: #75777c; /* decorative and large text only */
+
+  --accent: #f0c27b;
+  --accent-hover: #ffd79a;
+  --accent-dim: #d9b267;
+  --accent-ink: #12130f;
+  --accent-wash: rgba(240, 194, 123, 0.12);
+
+  --positive: #7fcfa4;
+  --negative: #c97b6b;
+  --warning: #d9b267;
+  --info: #9aa7b3;
+
+  --radius-card: 12px;
+  --radius-control: 8px;
+  --radius-pill: 6px;
+
+  --font-display: var(--font-instrument-sans), system-ui, sans-serif;
+  --font-body: var(--font-instrument-sans), system-ui, sans-serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, monospace;
+
+  /* Tally declares elevation with a hairline and nothing else. */
+  --elevation: none;
+  --frost: none;
+
+  --tracking-display: -0.025em;
+}
+
+[data-theme='tempo'] {
+  --bg: #120c1f;
+  --bg-tint-a: rgba(124, 58, 237, 0.4);
+  --bg-tint-b: rgba(34, 211, 238, 0.22);
+
+  --surface: rgba(255, 255, 255, 0.07);
+  --surface-2: rgba(255, 255, 255, 0.11);
+  --surface-solid: #1c1630;
+  --hairline: rgba(255, 255, 255, 0.1);
+  --hairline-strong: rgba(255, 255, 255, 0.2);
+
+  --ink: #f4f2ee;
+  --ink-2: #c4c6cc;
+  --ink-3: #8b8c90;
+  --ink-4: #6c6e74;
+
+  --accent: #a3e635;
+  --accent-hover: #b8f04e;
+  --accent-dim: #7fb824;
+  --accent-ink: #10200a;
+  --accent-wash: rgba(163, 230, 53, 0.14);
+
+  --positive: #a3e635;
+  --negative: #fb7185;
+  --warning: #fbbf24;
+  --info: #22d3ee;
+
+  --violet: #7c3aed;
+  --cyan: #22d3ee;
+
+  --radius-card: 28px;
+  --radius-control: 18px;
+  --radius-pill: 999px;
+
+  --font-display: var(--font-outfit), system-ui, sans-serif;
+  --font-body: var(--font-outfit), system-ui, sans-serif;
+  --font-mono: var(--font-outfit), system-ui, sans-serif;
+
+  /* Tempo declares elevation with frost and a soft offset shadow. */
+  --elevation: 0 18px 40px -24px rgba(0, 0, 0, 0.9);
+  --frost: blur(24px);
+
+  --tracking-display: -0.03em;
+}
+
+html {
+  background: var(--bg);
+  color-scheme: dark;
 }
 
 body {
-  background: #f8fafc;
-  color: var(--color-ink);
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-body);
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  min-height: 100dvh;
+}
+
+/* The ambient wash. Fixed so it does not scroll away from a long statement,
+   and behind everything so no surface has to fight it. */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(120% 80% at 8% -10%, var(--bg-tint-a), transparent 62%),
+    radial-gradient(100% 70% at 100% 108%, var(--bg-tint-b), transparent 60%);
+}
+
+/* Numerals in a statement have to line up vertically to be scannable at all.
+   This is the single most load-bearing type rule in the Tally direction. */
+.figure {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+  letter-spacing: -0.01em;
+}
+
+[data-theme='tempo'] .figure {
+  /* Tempo is one family throughout, so tabular numerals come from the
+     feature setting rather than from a second face. */
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+.display {
+  font-family: var(--font-display);
+  letter-spacing: var(--tracking-display);
+  text-wrap: balance;
+}
+
+/* Focus that survives both worlds. Never removed, only restyled. */
+:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+::selection {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* One authored entrance, used on the balance figure only. Exponential
+   ease-out from an already-visible default, so nothing pops in from nothing. */
+@keyframes settle {
+  from {
+    opacity: 0.55;
+    transform: translateY(6px);
+    filter: blur(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+    filter: none;
+  }
+}
+
+.settle {
+  animation: settle 620ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* Tempo's pace ring sweep. Real progress, not decoration. */
+@keyframes sweep {
+  from {
+    stroke-dashoffset: var(--sweep-from);
+  }
+}
+
+.sweep {
+  animation: sweep 900ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }

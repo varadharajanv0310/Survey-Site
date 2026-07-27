@@ -1,8 +1,9 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { api, formatDate, formatPoints } from '@/lib/api'
-import { Badge, Button, Card, Shell, Stat } from '@/components/shell'
+import { api, formatPoints } from '@/lib/api'
+import { Shell } from '@/components/shell'
+import { Button, Empty, PageHeader, Pill, Skeleton, Stat, Surface } from '@/components/ui'
 
 type ReferralData = {
   referralCode: string
@@ -20,102 +21,133 @@ type ReferralData = {
 export default function ReferralsPage() {
   const [data, setData] = useState<ReferralData | null>(null)
   const [copied, setCopied] = useState(false)
+  const [link, setLink] = useState('')
 
   useEffect(() => {
-    api<ReferralData>('/me/referrals').then(setData).catch(() => {})
+    api<ReferralData>('/me/referrals')
+      .then((r) => {
+        setData(r)
+        setLink(`${window.location.origin}/signup?ref=${r.referralCode}`)
+      })
+      .catch(() => {})
   }, [])
 
-  if (!data) return <Shell><p className="text-sm text-[var(--color-muted)]">Loading…</p></Shell>
+  if (!data) {
+    return (
+      <Shell>
+        <Skeleton className="mb-6 h-9 w-40" />
+        <Skeleton className="h-64 w-full" />
+      </Shell>
+    )
+  }
 
-  const link =
-    typeof window !== 'undefined'
-      ? `${window.location.origin}/signup?ref=${data.referralCode}`
-      : ''
+  const share = async () => {
+    // Native share sheet where it exists — this audience shares to WhatsApp,
+    // and a clipboard copy is a worse version of that on a phone.
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: 'Earn with me', url: link })
+        return
+      } catch {
+        /* dismissed; fall through to copy */
+      }
+    }
+    await navigator.clipboard.writeText(link)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
 
-  const totalCommission = data.referrals.reduce((s, r) => s + r.lifetimeCommissionPoints, 0)
-  const qualified = data.referrals.filter((r) => r.qualifiedAt).length
+  const earning = data.referrals.filter((r) => r.qualifiedAt).length
+  const commission = data.referrals.reduce((s, r) => s + r.lifetimeCommissionPoints, 0)
 
   return (
     <Shell>
-      <h1 className="text-xl font-semibold tracking-tight">Refer a friend</h1>
+      <PageHeader title="Refer a friend" />
 
-      <div className="mt-4 grid gap-4 sm:grid-cols-3">
-        <Card>
-          <Stat label="Friends joined" value={String(data.referrals.length)} />
-        </Card>
-        <Card>
+      <div className="grid gap-3 sm:grid-cols-3">
+        <Surface className="p-4">
+          <Stat label="Joined" value={String(data.referrals.length)} />
+        </Surface>
+        <Surface className="p-4">
+          <Stat label="Earning" value={String(earning)} hint="Bonus pays on their first earn" />
+        </Surface>
+        <Surface className="p-4">
           <Stat
-            label="Earning"
-            value={String(qualified)}
-            hint="Bonus pays once they first earn"
+            label="You've earned"
+            value={formatPoints(commission)}
+            tone={commission > 0 ? 'positive' : 'muted'}
           />
-        </Card>
-        <Card>
-          <Stat label="Commission earned" value={`${formatPoints(totalCommission)} pts`} />
-        </Card>
+        </Surface>
       </div>
 
-      <Card title="Your link" className="mt-6">
-        <div className="flex gap-2">
-          <code className="flex-1 overflow-x-auto rounded-md border border-[var(--color-line)] bg-slate-50 px-3 py-2 font-mono text-sm">
+      <Surface className="mt-4 p-5">
+        <h2 className="text-[15px] font-semibold">Your link</h2>
+
+        <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+          <code className="figure flex-1 overflow-x-auto rounded-[var(--radius-control)] border border-[var(--hairline)] bg-[var(--surface-2)] px-3 py-2.5 text-[13px] whitespace-nowrap">
             {link}
           </code>
-          <Button
-            onClick={() => {
-              navigator.clipboard.writeText(link)
-              setCopied(true)
-              setTimeout(() => setCopied(false), 2000)
-            }}
-          >
-            {copied ? 'Copied' : 'Copy'}
+          <Button onClick={share} className="shrink-0">
+            {copied ? 'Copied' : 'Share'}
           </Button>
         </div>
 
-        <p className="mt-3 text-sm text-[var(--color-muted)]">
-          You get <strong className="text-[var(--color-ink)]">{formatPoints(data.bonusPoints)} points</strong>{' '}
+        <p className="mt-4 text-[14px] leading-relaxed text-[var(--ink-2)]">
+          You get{' '}
+          <strong className="font-semibold text-[var(--ink)]">
+            {formatPoints(data.bonusPoints)} points
+          </strong>{' '}
           when a friend first earns something, then{' '}
-          <strong className="text-[var(--color-ink)]">{data.commissionBps / 100}%</strong> of
-          everything they earn after that — taken from our side, never theirs.
+          <strong className="font-semibold text-[var(--ink)]">{data.commissionBps / 100}%</strong>{' '}
+          of everything they earn after that.
         </p>
-        <p className="mt-2 text-xs text-[var(--color-muted)]">
-          The bonus pays on their first completed offer rather than at signup, which is what keeps
-          the programme worth running.
+        <p className="mt-2 text-[13px] text-[var(--ink-3)]">
+          Their earnings are never reduced — your share comes out of ours. The bonus pays on their
+          first completed offer rather than at signup, which is what keeps the programme worth
+          running.
         </p>
-      </Card>
+      </Surface>
 
-      <Card title="Your referrals" className="mt-6">
-        <div className="space-y-2">
+      <h2 className="mt-7 mb-3 text-[13px] tracking-[0.06em] text-[var(--ink-3)] uppercase">
+        People you referred
+      </h2>
+
+      {data.referrals.length === 0 ? (
+        <Surface>
+          <Empty
+            title="Nobody yet"
+            body="Share your link above. You'll see them here as soon as they sign up, and you earn once they complete their first offer."
+          />
+        </Surface>
+      ) : (
+        <Surface className="divide-y divide-[var(--hairline)]">
           {data.referrals.map((referral) => (
-            <div
-              key={referral.id}
-              className="flex items-center justify-between rounded-lg border border-[var(--color-line)] px-4 py-3"
-            >
-              <div>
-                <div className="text-sm font-medium">{referral.refereeEmail}</div>
-                <div className="text-xs text-[var(--color-muted)]">
-                  Joined {formatDate(referral.attributedAt)}
+            <div key={referral.id} className="flex items-center justify-between gap-3 px-4 py-3.5">
+              <div className="min-w-0">
+                <div className="truncate text-[15px]">{referral.refereeEmail}</div>
+                <div className="mt-0.5 text-[12px] text-[var(--ink-4)]">
+                  Joined{' '}
+                  {new Date(referral.attributedAt).toLocaleDateString('en-IN', {
+                    day: 'numeric',
+                    month: 'short',
+                  })}
                 </div>
               </div>
-              <div className="flex items-center gap-3">
+
+              <div className="flex shrink-0 items-center gap-3">
                 {referral.lifetimeCommissionPoints > 0 && (
-                  <span className="text-sm font-semibold tabular-nums text-[var(--color-positive)]">
+                  <span className="figure text-[15px] font-semibold text-[var(--positive)]">
                     +{formatPoints(referral.lifetimeCommissionPoints)}
                   </span>
                 )}
-                <Badge tone={referral.qualifiedAt ? 'positive' : 'default'}>
-                  {referral.qualifiedAt ? 'Earning' : 'Not yet earning'}
-                </Badge>
+                <Pill tone={referral.qualifiedAt ? 'positive' : 'neutral'}>
+                  {referral.qualifiedAt ? 'Earning' : 'Not yet'}
+                </Pill>
               </div>
             </div>
           ))}
-
-          {data.referrals.length === 0 && (
-            <p className="py-6 text-center text-sm text-[var(--color-muted)]">
-              No referrals yet. Share your link above.
-            </p>
-          )}
-        </div>
-      </Card>
+        </Surface>
+      )}
     </Shell>
   )
 }

@@ -6,6 +6,7 @@ import { hashDestination, maskDestination } from '../auth/tokens'
 import { LedgerService } from '../ledger/service'
 import { ledgerKeys } from '../ledger/keys'
 import { currencyConfig, minorUnitsForPoints } from '../money'
+import { minRedemptionFor } from '../levels'
 import type { FraudPipeline } from '../fraud/pipeline'
 import type { FraudContext } from '../fraud/types'
 import type { PayoutMethod, PayoutProvider } from './provider'
@@ -89,11 +90,14 @@ export class PayoutService {
   }): Promise<{ payoutId: string; state: PayoutState }> {
     const settings = this.deps.settings
 
-    if (input.points < settings.min_redemption_points) {
-      throw new PayoutError(
-        `minimum redemption is ${settings.min_redemption_points} points`,
-        'below_minimum',
-      )
+    // The user's level lowers their minimum. Read from the ledger rather than
+    // trusted from the client, and enforced here so the number the UI shows is
+    // the number the server actually applies.
+    const balance = await this.deps.ledger.getBalance(input.userId)
+    const minimum = minRedemptionFor(settings.min_redemption_points, balance.lifetimeEarned)
+
+    if (input.points < minimum) {
+      throw new PayoutError(`minimum redemption is ${minimum} points`, 'below_minimum')
     }
 
     const [user] = await this.db

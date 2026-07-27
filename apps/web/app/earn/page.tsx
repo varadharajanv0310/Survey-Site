@@ -1,9 +1,10 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { API_URL, api, formatPoints, post } from '@/lib/api'
 import { getFingerprint } from '@/lib/fingerprint'
-import { Badge, Button, Card, Shell } from '@/components/shell'
+import { Shell } from '@/components/shell'
+import { Button, Empty, PageHeader, Pill, Skeleton, Surface } from '@/components/ui'
 
 type Offer = {
   id: string
@@ -18,9 +19,7 @@ type Offer = {
 }
 
 type Wall = { id: string; name: string; networkName: string; url: string }
-
 type Feed = { offers: Offer[]; walls: Wall[]; country: string }
-
 type DailyBonus = { claimedToday: boolean; currentStreak: number }
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -36,86 +35,103 @@ const CATEGORY_LABELS: Record<string, string> = {
 export default function EarnPage() {
   const [feed, setFeed] = useState<Feed | null>(null)
   const [bonus, setBonus] = useState<DailyBonus | null>(null)
-  const [filter, setFilter] = useState<string>('all')
+  const [filter, setFilter] = useState('all')
   const [claiming, setClaiming] = useState(false)
-  const [message, setMessage] = useState('')
+  const [claimed, setClaimed] = useState('')
 
-  const load = () => {
-    api<Feed>('/offers').then(setFeed).catch(() => {})
+  const load = useCallback(() => {
+    api<Feed>('/offers').then(setFeed).catch(() => setFeed({ offers: [], walls: [], country: 'IN' }))
     api<DailyBonus>('/me/daily-bonus').then(setBonus).catch(() => {})
-  }
+  }, [])
 
-  useEffect(load, [])
+  useEffect(load, [load])
 
   const claim = async () => {
     setClaiming(true)
     try {
-      const result = await post<{ points: number; streakDay: number }>('/me/daily-bonus')
-      setMessage(`+${result.points} points — day ${result.streakDay} of your streak`)
+      const r = await post<{ points: number; streakDay: number }>('/me/daily-bonus')
+      setClaimed(`+${formatPoints(r.points)} points · day ${r.streakDay}`)
       load()
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : 'could not claim')
+      setClaimed(err instanceof Error ? err.message : 'Could not claim')
     } finally {
       setClaiming(false)
     }
   }
 
   /**
-   * Record the click, then open. Deliberately does not await the record before
-   * opening: a user who taps and waits taps again, and a lost click is a worse
-   * support answer rather than a broken flow.
-   *
-   * `sendBeacon` where available, because the page may be backgrounded the
-   * instant the offer opens and a normal fetch would be cancelled.
+   * Record the click, then open. Never awaited before navigation — a user who
+   * taps and waits taps again. `sendBeacon` covers the case where the page is
+   * backgrounded the instant the offer opens and a normal fetch is cancelled.
    */
   const trackClick = (payload: { offerId?: string; placementId?: string }) => {
     getFingerprint().then((deviceFingerprint) => {
       const body = JSON.stringify({ ...payload, deviceFingerprint })
       post('/offers/click', { ...payload, deviceFingerprint }).catch(() => {
-        if (typeof navigator !== 'undefined' && navigator.sendBeacon) {
-          navigator.sendBeacon(`${API_URL}/offers/click`, new Blob([body], { type: 'application/json' }))
-        }
+        navigator.sendBeacon?.(
+          `${API_URL}/offers/click`,
+          new Blob([body], { type: 'application/json' }),
+        )
       })
     })
   }
 
-  const categories = ['all', ...new Set(feed?.offers.map((o) => o.category) ?? [])]
-  const visible = feed?.offers.filter((o) => filter === 'all' || o.category === filter) ?? []
+  if (!feed) {
+    return (
+      <Shell>
+        <Skeleton className="mb-6 h-9 w-32" />
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {Array.from({ length: 6 }, (_, i) => (
+            <Skeleton key={i} className="h-40" />
+          ))}
+        </div>
+      </Shell>
+    )
+  }
+
+  const categories = ['all', ...new Set(feed.offers.map((o) => o.category))]
+  const visible = feed.offers.filter((o) => filter === 'all' || o.category === filter)
 
   return (
     <Shell>
-      <div className="flex items-baseline justify-between">
-        <h1 className="text-xl font-semibold tracking-tight">Earn</h1>
-        <span className="text-xs text-[var(--color-muted)]">
-          Showing offers available in {feed?.country ?? '…'}
-        </span>
-      </div>
+      <PageHeader title="Earn" meta={`Available where you are · ${feed.country}`} />
 
-      {/* Daily bonus. Cheap to build, and most of why someone opens the site
-          on day 30 rather than day 1. */}
-      <Card className="mt-4">
-        <div className="flex items-center justify-between gap-4">
-          <div>
-            <h2 className="text-sm font-semibold">Daily bonus</h2>
-            <p className="mt-0.5 text-xs text-[var(--color-muted)]">
-              {bonus?.claimedToday
-                ? `Claimed today. Current streak: ${bonus.currentStreak} day${bonus.currentStreak === 1 ? '' : 's'}.`
-                : 'Claim once a day. The longer the streak, the bigger the bonus.'}
-            </p>
-            {message && <p className="mt-1 text-xs text-[var(--color-positive)]">{message}</p>}
+      {/* Daily bonus. Small, cheap, and most of why someone opens the app on
+          day 30 rather than day 1. */}
+      <Surface className="mb-5 flex items-center justify-between gap-4 p-4">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <h2 className="text-[15px] font-semibold">Daily bonus</h2>
+            {bonus && bonus.currentStreak > 0 && (
+              <Pill tone="accent">{bonus.currentStreak} day streak</Pill>
+            )}
           </div>
-          <Button onClick={claim} disabled={claiming || bonus?.claimedToday}>
-            {bonus?.claimedToday ? 'Claimed' : claiming ? 'Claiming…' : 'Claim'}
-          </Button>
+          <p className="mt-1 text-[13px] text-[var(--ink-3)]">
+            {claimed ||
+              (bonus?.claimedToday
+                ? 'Claimed. Come back tomorrow to keep the streak.'
+                : 'Claim once a day. The longer the streak, the larger it gets.')}
+          </p>
         </div>
-      </Card>
+        <Button
+          onClick={claim}
+          loading={claiming}
+          disabled={bonus?.claimedToday}
+          variant={bonus?.claimedToday ? 'quiet' : 'primary'}
+          size="sm"
+        >
+          {bonus?.claimedToday ? 'Claimed' : 'Claim'}
+        </Button>
+      </Surface>
 
-      {/* Survey walls are iframes, not a list of offers — their own JS decides
-          what to show in real time. Rendered as entry points, not as rows. */}
-      {feed && feed.walls.length > 0 && (
-        <div className="mt-6">
-          <h2 className="text-sm font-semibold">Surveys</h2>
-          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+      {/* Survey walls. Not offers — a doorway with no fixed reward, and saying
+          so up front prevents the "I did a survey and got 1 point" ticket. */}
+      {feed.walls.length > 0 && (
+        <section className="mb-7">
+          <h2 className="mb-3 text-[13px] tracking-[0.06em] text-[var(--ink-3)] uppercase">
+            Surveys
+          </h2>
+          <div className="grid gap-3 sm:grid-cols-2">
             {feed.walls.map((wall) => (
               <a
                 key={wall.id}
@@ -123,89 +139,96 @@ export default function EarnPage() {
                 target="_blank"
                 rel="noreferrer"
                 onClick={() => trackClick({ placementId: wall.id })}
-                className="group rounded-xl border border-[var(--color-line)] bg-gradient-to-br from-indigo-50 to-white p-5 transition hover:border-[var(--color-brand)]"
+                className="group rounded-[var(--radius-card)] border border-[var(--hairline)] bg-[var(--accent-wash)] p-5 transition-colors [backdrop-filter:var(--frost)] hover:border-[var(--accent)]"
               >
-                <div className="flex items-center justify-between">
-                  <h3 className="font-semibold">{wall.name}</h3>
-                  <Badge tone="info">{wall.networkName}</Badge>
+                <div className="flex items-center justify-between gap-3">
+                  <h3 className="text-[16px] font-semibold">{wall.name}</h3>
+                  <span className="text-[12px] text-[var(--ink-3)]">{wall.networkName}</span>
                 </div>
-                <p className="mt-1 text-sm text-[var(--color-muted)]">
-                  Answer a few questions to see which surveys you qualify for. Partial credit is
-                  paid if you are screened out.
+                <p className="mt-1.5 text-[13.5px] leading-relaxed text-[var(--ink-2)]">
+                  Answer a few questions to see which surveys you qualify for. If you don&apos;t
+                  qualify you still get a small amount for trying.
                 </p>
-                <span className="mt-3 inline-block text-sm font-medium text-[var(--color-brand)]">
+                <span className="mt-3 inline-block text-[14px] font-semibold text-[var(--accent)]">
                   Open surveys →
                 </span>
               </a>
             ))}
           </div>
-        </div>
+        </section>
       )}
 
-      <div className="mt-8 flex items-center justify-between">
-        <h2 className="text-sm font-semibold">Offers</h2>
-        <div className="flex gap-1">
-          {categories.map((category) => (
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <h2 className="text-[13px] tracking-[0.06em] text-[var(--ink-3)] uppercase">Offers</h2>
+        <div className="-mr-5 flex gap-1.5 overflow-x-auto pr-5 lg:mr-0 lg:pr-0">
+          {categories.map((c) => (
             <button
-              key={category}
-              onClick={() => setFilter(category)}
-              className={`rounded-md px-2.5 py-1 text-xs font-medium transition ${
-                filter === category
-                  ? 'bg-[var(--color-ink)] text-white'
-                  : 'text-[var(--color-muted)] hover:bg-slate-100'
+              key={c}
+              onClick={() => setFilter(c)}
+              className={`shrink-0 rounded-[var(--radius-pill)] px-2.5 py-1 text-[12.5px] transition-colors ${
+                filter === c
+                  ? 'bg-[var(--accent)] font-semibold text-[var(--accent-ink)]'
+                  : 'text-[var(--ink-3)] hover:text-[var(--ink)]'
               }`}
             >
-              {category === 'all' ? 'All' : (CATEGORY_LABELS[category] ?? category)}
+              {c === 'all' ? 'All' : (CATEGORY_LABELS[c] ?? c)}
             </button>
           ))}
         </div>
       </div>
 
-      <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {visible.map((offer) => (
-          <a
-            key={offer.id}
-            href={offer.url}
-            target="_blank"
-            rel="noreferrer"
-            onClick={() => trackClick({ offerId: offer.id })}
-            className="flex flex-col rounded-xl border border-[var(--color-line)] bg-white p-4 transition hover:border-[var(--color-brand)] hover:shadow-sm"
-          >
-            <div className="flex items-start justify-between gap-3">
-              <h3 className="text-sm font-semibold leading-snug">{offer.title}</h3>
-              <span className="shrink-0 rounded-md bg-emerald-50 px-2 py-1 text-sm font-semibold tabular-nums text-[var(--color-positive)]">
-                {formatPoints(offer.points)}
-              </span>
-            </div>
+      {visible.length === 0 ? (
+        <Surface>
+          <Empty
+            title="No offers right now"
+            body={`Nothing matches this filter for ${feed.country}. Inventory rotates as networks update what they have, so it is worth checking back.`}
+            action={
+              filter !== 'all' ? (
+                <Button variant="quiet" size="sm" onClick={() => setFilter('all')}>
+                  Show all
+                </Button>
+              ) : undefined
+            }
+          />
+        </Surface>
+      ) : (
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {visible.map((offer) => (
+            <a
+              key={offer.id}
+              href={offer.url}
+              target="_blank"
+              rel="noreferrer"
+              onClick={() => trackClick({ offerId: offer.id })}
+              className="flex flex-col rounded-[var(--radius-card)] border border-[var(--hairline)] bg-[var(--surface)] p-4 transition-colors [backdrop-filter:var(--frost)] [box-shadow:var(--elevation)] hover:border-[var(--accent)]"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <h3 className="text-[15px] leading-snug font-semibold">{offer.title}</h3>
+                <span className="figure shrink-0 text-[17px] font-semibold text-[var(--positive)]">
+                  {formatPoints(offer.points)}
+                </span>
+              </div>
 
-            {offer.description && (
-              <p className="mt-2 text-xs leading-relaxed text-[var(--color-muted)]">
-                {offer.description}
-              </p>
-            )}
+              {offer.description && (
+                <p className="mt-2 text-[13px] leading-relaxed text-[var(--ink-3)]">
+                  {offer.description}
+                </p>
+              )}
 
-            {offer.requirements && (
-              <p className="mt-2 border-l-2 border-amber-200 pl-2 text-xs text-[var(--color-warn)]">
-                {offer.requirements}
-              </p>
-            )}
+              {offer.requirements && (
+                <p className="mt-2 text-[12.5px] leading-relaxed text-[var(--warning)]">
+                  {offer.requirements}
+                </p>
+              )}
 
-            <div className="mt-auto flex items-center gap-2 pt-3 text-xs text-[var(--color-muted)]">
-              <Badge>{CATEGORY_LABELS[offer.category] ?? offer.category}</Badge>
-              {offer.estimatedMinutes && <span>~{offer.estimatedMinutes} min</span>}
-              <span className="ml-auto">{offer.networkName}</span>
-            </div>
-          </a>
-        ))}
-      </div>
-
-      {feed && visible.length === 0 && (
-        <Card className="mt-3">
-          <p className="text-sm text-[var(--color-muted)]">
-            No offers match this filter for {feed.country} right now. Offers rotate as networks
-            update their inventory.
-          </p>
-        </Card>
+              <div className="mt-auto flex items-center gap-2 pt-3.5 text-[12px] text-[var(--ink-4)]">
+                <Pill>{CATEGORY_LABELS[offer.category] ?? offer.category}</Pill>
+                {offer.estimatedMinutes && <span>~{offer.estimatedMinutes} min</span>}
+                <span className="ml-auto truncate">{offer.networkName}</span>
+              </div>
+            </a>
+          ))}
+        </div>
       )}
     </Shell>
   )

@@ -63,6 +63,15 @@ export type RecordInput = {
   configVersion?: number
   note?: string
   createdByAdminId?: string
+  /**
+   * Backdate the entry. Only for seeding and for importing history from a
+   * system we are migrating off — ordinary writes must let the database stamp
+   * the time, for the same clock-authority reason hold windows do.
+   *
+   * The immutability trigger blocks any later change to `created_at`, so this
+   * is a one-shot decision at insert.
+   */
+  createdAt?: Date
 }
 
 export type LedgerEntryRow = {

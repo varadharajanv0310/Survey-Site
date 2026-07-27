@@ -282,6 +282,9 @@ async function seedCompletion(args: {
     networkId: args.networkId,
     completionId: completion!.id,
     externalTransactionId: txId,
+    // Backdated to match the completion, so the demo shows a month of
+    // activity spread across days rather than every entry landing at once.
+    createdAt: daysAgo(args.daysAgo),
   })
 
   return { entryId: entry.entry.id, completionId: completion!.id, points, txId }
@@ -427,6 +430,9 @@ for (let day = 4; day >= 1; day -= 1) {
     type: 'bonus',
     idempotencyKey: ledgerKeys.dailyBonus(userIds['demo@example.com']!, dateRow!.d),
     note: `daily bonus, streak day ${5 - day}`,
+    // Matches the claim date, so a streak reads as consecutive days rather
+    // than four bonuses claimed in the same second.
+    createdAt: daysAgo(day),
   })
   await db.insert(dailyClaims).values({
     userId: userIds['demo@example.com']!,

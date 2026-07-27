@@ -18,6 +18,8 @@ import {
   PayoutError,
   currencyConfig,
   ledgerKeys,
+  levelFor,
+  minRedemptionFor,
   minorUnitsForPoints,
   queueJobId,
   signUserToken,
@@ -35,6 +37,8 @@ export async function registerUserRoutes(app: FastifyInstance, ctx: AppContext) 
     const balance = await ctx.ledger.getBalance(request.userId!)
     const { values: settings } = await ctx.settingsService.get()
     const currency = currencyConfig(settings)
+    const level = levelFor(balance.lifetimeEarned)
+
     return {
       ...balance,
       // Shown alongside the points so the number means something to the user.
@@ -44,13 +48,29 @@ export async function registerUserRoutes(app: FastifyInstance, ctx: AppContext) 
       minorUnitsPerMajor: currency.minorUnitsPerMajor,
       // Sent so the client never hardcodes the rate to render an estimate.
       pointsPerUnit: currency.pointsPerUnit,
-      minRedemptionPoints: settings.min_redemption_points,
+      // The level-adjusted minimum, which is what the payout endpoint enforces.
+      minRedemptionPoints: minRedemptionFor(settings.min_redemption_points, balance.lifetimeEarned),
+      baseMinRedemptionPoints: settings.min_redemption_points,
+      level: {
+        level: level.current.level,
+        name: level.current.name,
+        perk: level.current.perk,
+        progress: level.progress,
+        toNext: level.toNext,
+        nextName: level.next?.name ?? null,
+        nextPerk: level.next?.perk ?? null,
+      },
     }
   })
 
   app.get('/me/history', auth, async (request) => {
+    // 200 so the statement screen can chart a full month in one request. Above
+    // that the client should paginate rather than the server growing a limit.
     const query = z
-      .object({ limit: z.coerce.number().min(1).max(100).default(50), offset: z.coerce.number().min(0).default(0) })
+      .object({
+        limit: z.coerce.number().min(1).max(200).default(50),
+        offset: z.coerce.number().min(0).default(0),
+      })
       .parse(request.query)
 
     const rows = await ctx.db

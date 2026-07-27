@@ -161,6 +161,8 @@ export class LedgerService {
      * An explicit `availableAt` is still honoured, for admin overrides and for
      * tests that need a deterministic absolute time.
      */
+    if (input.createdAt) values.createdAt = input.createdAt
+
     if (input.availableAt) {
       values.availableAt = input.availableAt
     } else if (input.holdHours && input.holdHours > 0) {
