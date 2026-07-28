@@ -1,78 +1,96 @@
 # What's left
 
-Written down so it survives between sessions.
+Written down so it survives between sessions. Current as of commit `1a1a7a1`.
 
 ---
 
-## Done since this file was written
+## Where the project stands
 
-Items 1–5 of the previous roadmap are complete. Briefly:
+The **product is feature-complete** for a first launch. A user can sign up,
+earn from offers and surveys, watch points clear, cash out, refer someone, and
+raise a support ticket. An admin can review fraud, approve payouts, answer
+tickets, tune settings, and see per-network margin. The ledger's guarantees are
+enforced by the database and tested under real concurrency.
 
-- **Ledger concurrency** — per-user advisory lock around every read-then-write,
-  plus a filter bug it uncovered where the hold window was gating debits. 7
-  concurrency tests issuing genuinely simultaneous writes. See DECISIONS.md.
-- **Rate limiting** — Redis-backed, tiered by what abuse costs: tight on
-  credentials, generous on postbacks because networks legitimately burst.
-- **Reset / verify / legal pages** — emailed links now resolve; privacy policy
-  and terms drafted (marked as needing legal review).
-- **Email** — provider interface with a Resend adapter; console fallback that
-  says plainly nothing was delivered.
-- **Admin ticket UI** — full thread, internal notes, status changes, and the
-  raw postback evidence inline so a missing-points claim can be answered
-  rather than guessed at.
-- **Click tracking** — separates "never started" from "network never fired"
-  from "we rejected it".
-- **Device fingerprinting** — collected in the browser and persisted, so
-  `duplicate_device` fires instead of being inert. Signup now runs the fraud
-  pipeline at all, which it previously never did.
-- **Tests** — 61 total across ledger, concurrency, fraud pipeline, payouts.
+What is left is mostly **launch readiness and judgement calls**, not features.
+
+Built and verified: 69 tests, 12/12 adversarial simulator checks, 25 routes,
+two complete visual directions at mobile and desktop.
 
 ---
 
-## Still outstanding
+## 1. The decision that gates the rest
 
-### Blocked on the partner, not on code
+**Pick a direction — Tally or Tempo.** Both are built and switchable, but
+maintaining two indefinitely doubles the cost of every future screen. Once you
+choose, the loser gets deleted and the winner gets the polish below.
+
+Everything else in this file is smaller than it looks. This isn't.
+
+---
+
+## 2. Code, not blocked on anyone
+
+Roughly in the order I'd do them.
+
+1. **Fill in the legal placeholders and get them reviewed.** Every
+   `[SQUARE BRACKET]` in `/legal/privacy` and `/legal/terms` needs a real
+   value. They are accurate about what the system does; that is not the same as
+   legally sufficient. **This is on your partner's critical path** — networks
+   will not approve a publisher without them.
+
+2. **Two rough edges visible in the built UI:**
+   - Tempo's pace target is derived from a monthly average, so an unusually
+     good week reads as "14,738 of 6,000". Honest but odd-looking; needs a
+     longer baseline or a display cap.
+   - Tally's month chart has no minimum bar height, so quiet days vanish next
+     to a big one.
+
+3. **Visual QA of the screens I only checked structurally.** I verified
+   contrast, overflow and layout switching programmatically across both
+   themes, but only *looked* at the balance screen. Earn, cash out, statement,
+   refer, support, and the auth screens deserve eyes at 360px.
+
+4. **The admin surface was not redesigned.** It compiles and picks up whichever
+   theme is active, but it was drawn for the old palette and never art-directed
+   for either direction. It is Operate mode and can stay plainer than the user
+   app, but it should be deliberate rather than inherited.
+
+5. **Payout retry path.** `failed` is deliberately non-terminal so a user can
+   correct their UPI ID, but there is no UI for editing a destination and
+   retrying — an admin has to cancel and the user re-requests.
+
+6. **Admin click timeline on the user detail page.** The
+   `/admin/users/:id/activity` endpoint exists and the ticket page shows recent
+   clicks; the user detail page does not.
+
+7. **Fraud threshold tuning.** The framework is real and now actually fires.
+   Every number in it is a guess until there is traffic. The data to tune with
+   is already being recorded in `fraud_check_results`.
+
+8. **Housekeeping jobs.** `postback_events` grows without bound and needs
+   pruning. Expired rows in `sessions` and `auth_tokens` are never deleted.
+
+9. **Balance checkpointing.** Balance is a `SUM` per read. Fine at this scale;
+   the fix when it stops being fine is a checkpoint table, which keeps the
+   ledger authoritative rather than adding a mutable column.
+
+---
+
+## 3. Blocked on the partner, not on code
 
 Network accounts and credentials · UPI payout provider account · business
 entity and bank account · domain · fraud signal provider (IPQualityScore or
 MaxMind) · email provider account.
 
-Note the dependency runs backwards from how it feels: several of these
-**require** a live site with legal pages and a working postback endpoint before
-anyone will approve you. That part is now done, so this is genuinely the
-partner's critical path.
+The dependency runs backwards from how it feels: several of these **require** a
+live site with legal pages and a working postback endpoint before anyone will
+approve you. That part is done, so this is genuinely the partner's critical
+path now — apart from filling in the legal placeholders.
 
-### Code, in rough priority order
+---
 
-1. **Fill in the legal placeholders and get them reviewed.** Every
-   `[SQUARE BRACKET]` in `/legal/privacy` and `/legal/terms` needs a real
-   value, and the pages need a lawyer's eyes. They are accurate about what the
-   system does; that is not the same as being legally sufficient.
-
-2. **Fraud threshold tuning.** The framework is real and now actually fires.
-   Every number in it is a guess until there is traffic to tune against. The
-   data to tune with is already being recorded (`fraud_check_results` stores
-   per-check scores and details).
-
-3. **Admin UI for the click log.** The `/admin/users/:id/activity` endpoint
-   exists and the ticket page surfaces recent clicks, but the user detail page
-   does not yet show the click timeline.
-
-4. **Payout retry path.** `failed` is deliberately non-terminal so a user can
-   correct their UPI ID, but there is no UI for editing a destination and
-   retrying — currently an admin has to cancel and the user re-requests.
-
-5. **Postback event retention.** `postback_events` grows without bound. Needs a
-   pruning job for old rows that already resulted in a credit.
-
-6. **Balance checkpointing.** Balance is a `SUM` per read. Fine at this scale;
-   the fix when it stops being fine is a checkpoint table, which keeps the
-   ledger authoritative rather than adding a mutable column.
-
-7. **Session cleanup.** Expired rows in `sessions` and `auth_tokens` are never
-   deleted.
-
-### Deliberately untouched
+## 4. Deliberately untouched
 
 Deployment, CI/CD, monitoring, backups, KYC.
 
@@ -84,9 +102,6 @@ Deployment, CI/CD, monitoring, backups, KYC.
   networks.
 - Docker Desktop on this machine intermittently fails to start with a stale
   `dockerInference` socket. Fix: kill Docker processes, rename
-  `%LOCALAPPDATA%\Docker\run` to anything else, restart Docker. It recreates
-  the directory.
-- Seed ledger entries all carry `created_at = now()`, so demo transaction
-  history looks like it happened in one instant. Cosmetic, seed-only.
-- UI design directions are pending — `design/UI_BRIEF.md` is written and
-  waiting to be run.
+  `%LOCALAPPDATA%\Docker\run` to anything else, restart Docker.
+- Agent skills are gitignored but pinned in `skills-lock.json`. Restore with
+  `npx skills experimental_install`.
