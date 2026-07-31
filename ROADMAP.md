@@ -103,5 +103,5 @@ Deployment, CI/CD, monitoring, backups, KYC.
 - Docker Desktop on this machine intermittently fails to start with a stale
   `dockerInference` socket. Fix: kill Docker processes, rename
   `%LOCALAPPDATA%\Docker\run` to anything else, restart Docker.
-- Agent skills are gitignored but pinned in `skills-lock.json`. Restore with
-  `npx skills experimental_install`.
+- Agent skills and their lockfile are gitignored — they are local tooling, not
+  part of the product. Restore a set with `npx skills experimental_install`.
