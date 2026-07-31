@@ -23,9 +23,10 @@ Thumbs.db
 # (.agents holds the files, .claude and agent/ are junctions to it). That is
 # ~9.5MB of third-party markdown tripled, and none of it is our product.
 #
-# skills-lock.json IS tracked — it pins the exact versions, so anyone can
-# restore the same set with:
+# skills-lock.json is no longer tracked either — it is local tooling state, not
+# part of the product. Restore a set with:
 #   npx skills experimental_install
 .agents/
 .claude/
 agent/
+skills-lock.json
