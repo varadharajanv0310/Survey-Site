@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { api, post } from '@/lib/api'
-import { readTheme, type ThemeName } from '@/lib/theme'
+import { currentTheme, syncThemeAcrossTabs, type ThemeName } from '@/lib/theme'
 import { monthlySummary, weekEarned, type Entry } from '@/lib/entries'
 import { Shell, type Balance } from '@/components/shell'
 import { Skeleton } from '@/components/ui'
@@ -37,20 +37,25 @@ export default function WalletPage() {
   }, [])
 
   useEffect(() => {
-    setTheme(readTheme())
+    setTheme(currentTheme())
     load()
 
-    // The theme switch lives in the shell, so this screen listens rather than
-    // owning the state — otherwise switching direction would need a reload.
-    const onStorage = () => setTheme(readTheme())
-    const observer = new MutationObserver(() =>
-      setTheme((document.documentElement.dataset.theme as ThemeName) ?? 'tally'),
-    )
+    /**
+     * The `data-theme` attribute is the single source of truth, watched rather
+     * than re-read from storage.
+     *
+     * Reading storage directly here was the bug: another tab switching theme
+     * fired a storage event, this component changed layout, and the attribute
+     * driving every colour stayed put — Tempo's pace ring in Tally's amber.
+     * Now storage only ever moves the attribute, and everything follows it.
+     */
+    const observer = new MutationObserver(() => setTheme(currentTheme()))
     observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] })
-    window.addEventListener('storage', onStorage)
+    const stopSync = syncThemeAcrossTabs()
+
     return () => {
       observer.disconnect()
-      window.removeEventListener('storage', onStorage)
+      stopSync()
     }
   }, [load])
 

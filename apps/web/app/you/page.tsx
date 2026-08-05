@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { api, formatPoints, post } from '@/lib/api'
-import { THEMES, applyTheme, readTheme, type ThemeName } from '@/lib/theme'
+import { THEMES, applyTheme, currentTheme, type ThemeName } from '@/lib/theme'
 import { Shell, type Balance } from '@/components/shell'
 import { Button, Note, PageHeader, Pill, Skeleton, Surface } from '@/components/ui'
 
@@ -29,9 +29,14 @@ export default function YouPage() {
   const [resent, setResent] = useState(false)
 
   useEffect(() => {
-    setTheme(readTheme())
+    setTheme(currentTheme())
+    const observer = new MutationObserver(() => setTheme(currentTheme()))
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] })
+
     api<{ user: User }>('/auth/me').then((r) => setUser(r.user)).catch(() => {})
     api<Balance>('/me/balance').then(setBalance).catch(() => {})
+
+    return () => observer.disconnect()
   }, [])
 
   const switchTheme = (next: ThemeName) => {

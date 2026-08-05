@@ -4,7 +4,14 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { api, formatMoney, formatPoints } from '@/lib/api'
-import { THEMES, applyTheme, readTheme, type ThemeName } from '@/lib/theme'
+import {
+  THEMES,
+  applyTheme,
+  currentTheme,
+  pinnedTheme,
+  syncThemeAcrossTabs,
+  type ThemeName,
+} from '@/lib/theme'
 import { Skeleton } from './ui'
 
 // Re-exported so existing screens and the whole admin surface keep importing
@@ -59,13 +66,24 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = useState(false)
 
   useEffect(() => {
-    setTheme(readTheme())
+    setTheme(currentTheme())
+
+    // Follow the attribute, not storage — see the note in lib/theme.ts.
+    const observer = new MutationObserver(() => setTheme(currentTheme()))
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] })
+    const stopSync = syncThemeAcrossTabs()
+
     api<{ user: { email: string } }>('/auth/me')
       .then(() => setReady(true))
       .catch(() => router.replace('/login'))
     api<Balance>('/me/balance')
       .then(setBalance)
       .catch(() => {})
+
+    return () => {
+      observer.disconnect()
+      stopSync()
+    }
   }, [router])
 
   const switchTheme = (next: ThemeName) => {
@@ -186,10 +204,12 @@ function ThemeSwitch({
   theme: ThemeName
   onChange: (t: ThemeName) => void
 }) {
+  const pinned = pinnedTheme()
+
   return (
     <div>
       <div className="mb-2 text-[11px] tracking-[0.08em] text-[var(--ink-4)] uppercase">
-        Direction
+        Direction{pinned && ' · pinned'}
       </div>
       <div
         role="radiogroup"

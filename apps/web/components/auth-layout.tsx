@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
-import { THEMES, applyTheme, readTheme, type ThemeName } from '@/lib/theme'
+import { THEMES, applyTheme, currentTheme, type ThemeName } from '@/lib/theme'
 
 /**
  * Shared chrome for signed-out screens.
@@ -24,7 +24,12 @@ export function AuthLayout({
 }) {
   const [theme, setTheme] = useState<ThemeName>('tally')
 
-  useEffect(() => setTheme(readTheme()), [])
+  useEffect(() => {
+    setTheme(currentTheme())
+    const observer = new MutationObserver(() => setTheme(currentTheme()))
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] })
+    return () => observer.disconnect()
+  }, [])
 
   const switchTheme = (next: ThemeName) => {
     applyTheme(next)
