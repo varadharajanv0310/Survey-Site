@@ -155,7 +155,7 @@ export default function YouPage() {
           <p className="mt-1 text-[13px] text-[var(--ink-3)]">
             Two candidate designs, same data. Switch freely — nothing about your account changes.
           </p>
-          <div className="mt-4 grid gap-2 sm:grid-cols-2">
+          <div className="mt-4 grid gap-2 sm:grid-cols-3">
             {THEMES.map((t) => (
               <button
                 key={t.name}

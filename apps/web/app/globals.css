@@ -107,6 +107,64 @@
   --tracking-display: -0.03em;
 }
 
+/* ---------------------------------------------------------------------------
+   ARRIVALS — a departures board for your earnings.
+
+   Tally asks what you have. Tempo asks whether you are on pace. Neither
+   answers the question that actually generates support tickets: when does my
+   money arrive? Points clear on a hold, networks confirm on their own
+   schedule, payouts settle when a provider gets to them. This product is a
+   queue of money landing on other people's timetables, so the board is the
+   product.
+
+   The discipline: the ONLY colour in the interface is the status of your
+   money. Everything else is monochrome. Nothing competes with the four things
+   a user needs to tell apart at a glance — landed, scheduled, held, gone.
+   --------------------------------------------------------------------------- */
+[data-theme='arrivals'] {
+  --bg: #08090b;
+  --bg-tint-a: rgba(255, 255, 255, 0.035);
+  --bg-tint-b: rgba(255, 255, 255, 0.015);
+
+  --surface: rgba(255, 255, 255, 0.04);
+  --surface-2: rgba(255, 255, 255, 0.07);
+  --surface-solid: #101215;
+  --hairline: rgba(255, 255, 255, 0.09);
+  --hairline-strong: rgba(255, 255, 255, 0.2);
+
+  --ink: #f5f7fa;
+  --ink-2: #a8aeb8;
+  --ink-3: #858c97; /* 6.1:1 on --bg */
+  --ink-4: #626973;
+
+  /* The call to action is the page inverted, not a coloured pill. Colour is
+     reserved entirely for status. */
+  --accent: #f5f7fa;
+  --accent-hover: #ffffff;
+  --accent-dim: #c9ced6;
+  --accent-ink: #08090b;
+  --accent-wash: rgba(255, 255, 255, 0.07);
+
+  --positive: #3dd68c; /* landed */
+  --warning: #f0b429; /* scheduled */
+  --negative: #ff6b6b; /* taken back */
+  --info: #5aa9ff; /* under review */
+
+  /* Sharp. A board is printed, not rounded. */
+  --radius-card: 4px;
+  --radius-control: 4px;
+  --radius-pill: 2px;
+
+  --font-display: var(--font-geist), system-ui, sans-serif;
+  --font-body: var(--font-geist), system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+
+  --elevation: none;
+  --frost: none;
+
+  --tracking-display: -0.03em;
+}
+
 html {
   background: var(--bg);
   color-scheme: dark;

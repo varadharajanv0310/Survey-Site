@@ -1,6 +1,11 @@
-export type ThemeName = 'tally' | 'tempo'
+export type ThemeName = 'tally' | 'tempo' | 'arrivals'
 
 export const THEMES: { name: ThemeName; label: string; thesis: string }[] = [
+  {
+    name: 'arrivals',
+    label: 'Arrivals',
+    thesis: 'A board of what lands, and when.',
+  },
   {
     name: 'tally',
     label: 'Tally',
@@ -13,10 +18,12 @@ export const THEMES: { name: ThemeName; label: string; thesis: string }[] = [
   },
 ]
 
+const THEME_NAMES = new Set<string>(THEMES.map((t) => t.name))
+
 const STORAGE_KEY = 'rewards.theme'
 
 const normalise = (value: string | null | undefined): ThemeName | null =>
-  value === 'tempo' ? 'tempo' : value === 'tally' ? 'tally' : null
+  value && THEME_NAMES.has(value) ? (value as ThemeName) : null
 
 /**
  * `?theme=tempo` pins a tab to one direction and never writes to storage.
@@ -31,8 +38,8 @@ export function pinnedTheme(): ThemeName | null {
 }
 
 export function readTheme(): ThemeName {
-  if (typeof window === 'undefined') return 'tally'
-  return pinnedTheme() ?? normalise(window.localStorage.getItem(STORAGE_KEY)) ?? 'tally'
+  if (typeof window === 'undefined') return 'arrivals'
+  return pinnedTheme() ?? normalise(window.localStorage.getItem(STORAGE_KEY)) ?? 'arrivals'
 }
 
 /**
@@ -67,8 +74,8 @@ export function syncThemeAcrossTabs(): () => void {
 
 /** Reads the attribute components should trust, rather than storage. */
 export function currentTheme(): ThemeName {
-  if (typeof document === 'undefined') return 'tally'
-  return normalise(document.documentElement.dataset.theme) ?? 'tally'
+  if (typeof document === 'undefined') return 'arrivals'
+  return normalise(document.documentElement.dataset.theme) ?? 'arrivals'
 }
 
 /**
@@ -78,10 +85,11 @@ export function currentTheme(): ThemeName {
  */
 export const THEME_BOOT_SCRIPT = `
 try {
+  var ok = ${JSON.stringify([...THEME_NAMES])};
   var q = new URLSearchParams(location.search).get('theme');
-  var t = q === 'tally' || q === 'tempo' ? q : localStorage.getItem('${STORAGE_KEY}');
-  document.documentElement.dataset.theme = t === 'tempo' ? 'tempo' : 'tally';
+  var t = ok.indexOf(q) > -1 ? q : localStorage.getItem('${STORAGE_KEY}');
+  document.documentElement.dataset.theme = ok.indexOf(t) > -1 ? t : 'arrivals';
 } catch (e) {
-  document.documentElement.dataset.theme = 'tally';
+  document.documentElement.dataset.theme = 'arrivals';
 }
 `.trim()

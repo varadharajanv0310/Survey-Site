@@ -51,12 +51,19 @@ export type Balance = {
  * because it is presenting an account. Tempo calls them Wallet and Activity,
  * because it is presenting a week.
  */
-const NAV: { href: string; tally: string; tempo: string; icon: React.ReactNode }[] = [
-  { href: '/earn', tally: 'Earn', tempo: 'Earn', icon: <IconEarn /> },
-  { href: '/wallet', tally: 'Balance', tempo: 'Wallet', icon: <IconBalance /> },
-  { href: '/statement', tally: 'Statement', tempo: 'Activity', icon: <IconStatement /> },
-  { href: '/you', tally: 'You', tempo: 'You', icon: <IconYou /> },
-]
+const NAV: { href: string; tally: string; tempo: string; arrivals: string; icon: React.ReactNode }[] =
+  [
+    { href: '/earn', tally: 'Earn', tempo: 'Earn', arrivals: 'Earn', icon: <IconEarn /> },
+    { href: '/wallet', tally: 'Balance', tempo: 'Wallet', arrivals: 'Board', icon: <IconBalance /> },
+    {
+      href: '/statement',
+      tally: 'Statement',
+      tempo: 'Activity',
+      arrivals: 'History',
+      icon: <IconStatement />,
+    },
+    { href: '/you', tally: 'You', tempo: 'You', arrivals: 'You', icon: <IconYou /> },
+  ]
 
 export function Shell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
@@ -91,7 +98,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
     setTheme(next)
   }
 
-  const label = (item: (typeof NAV)[number]) => (theme === 'tempo' ? item.tempo : item.tally)
+  const label = (item: (typeof NAV)[number]) => item[theme]
 
   return (
     <div className="min-h-dvh lg:flex">
@@ -186,7 +193,7 @@ function Wordmark({ theme }: { theme: ThemeName }) {
   return (
     <Link href="/earn" className="inline-flex items-baseline gap-2">
       <span className="figure text-[13px] font-semibold tracking-[0.24em] text-[var(--accent)] uppercase">
-        {theme === 'tempo' ? 'Tempo' : 'Tally'}
+        {THEMES.find((t) => t.name === theme)?.label ?? 'Arrivals'}
       </span>
     </Link>
   )
@@ -204,7 +211,16 @@ function ThemeSwitch({
   theme: ThemeName
   onChange: (t: ThemeName) => void
 }) {
-  const pinned = pinnedTheme()
+  /**
+   * Resolved after mount, not during render.
+   *
+   * `pinnedTheme()` reads `window.location.search`, which is null on the
+   * server and populated on the client, so rendering it directly made the
+   * server emit "Direction" and the client "Direction · pinned" — a hydration
+   * mismatch that React reported on every page of every theme.
+   */
+  const [pinned, setPinned] = useState(false)
+  useEffect(() => setPinned(pinnedTheme() !== null), [])
 
   return (
     <div>
@@ -214,7 +230,7 @@ function ThemeSwitch({
       <div
         role="radiogroup"
         aria-label="Visual direction"
-        className="grid grid-cols-2 gap-1 rounded-[var(--radius-control)] border border-[var(--hairline)] p-1"
+        className="grid grid-cols-3 gap-1 rounded-[var(--radius-control)] border border-[var(--hairline)] p-1"
       >
         {THEMES.map((t) => (
           <button

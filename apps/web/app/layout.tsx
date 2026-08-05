@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from 'next'
-import { IBM_Plex_Mono, Instrument_Sans, Outfit } from 'next/font/google'
+import { Geist, Geist_Mono, IBM_Plex_Mono, Instrument_Sans, Outfit } from 'next/font/google'
 import { ThemeBoot } from '@/components/theme-boot'
 import { THEME_BOOT_SCRIPT } from '@/lib/theme'
 import './globals.css'
@@ -26,6 +26,11 @@ const outfit = Outfit({
   variable: '--font-outfit',
   display: 'swap',
 })
+
+// Arrivals. Geist's numerals are unusually even, which matters when a column
+// of times and amounts is the entire screen.
+const geist = Geist({ subsets: ['latin'], variable: '--font-geist', display: 'swap' })
+const geistMono = Geist_Mono({ subsets: ['latin'], variable: '--font-geist-mono', display: 'swap' })
 
 export const metadata: Metadata = {
   title: 'Rewards',
@@ -54,7 +59,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
      */
     <html
       lang="en"
-      className={`${instrument.variable} ${plexMono.variable} ${outfit.variable}`}
+      className={`${instrument.variable} ${plexMono.variable} ${outfit.variable} ${geist.variable} ${geistMono.variable}`}
       suppressHydrationWarning
     >
       <head>

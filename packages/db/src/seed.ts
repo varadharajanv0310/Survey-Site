@@ -278,7 +278,12 @@ async function seedCompletion(args: {
         ? ledgerKeys.screenout(args.networkKey, txId)
         : ledgerKeys.earn(args.networkKey, txId),
     status: args.held ? 'pending' : 'posted',
-    ...(args.holdHours ? { holdHours: args.holdHours } : {}),
+    // A historical entry cleared back then, not at seed time. Without this the
+    // Arrivals board reads every past credit as having landed today and shows
+    // one identical clock time down the whole column.
+    ...(args.holdHours
+      ? { holdHours: args.holdHours }
+      : { availableAt: daysAgo(args.daysAgo) }),
     networkId: args.networkId,
     completionId: completion!.id,
     externalTransactionId: txId,
@@ -431,8 +436,10 @@ for (let day = 4; day >= 1; day -= 1) {
     idempotencyKey: ledgerKeys.dailyBonus(userIds['demo@example.com']!, dateRow!.d),
     note: `daily bonus, streak day ${5 - day}`,
     // Matches the claim date, so a streak reads as consecutive days rather
-    // than four bonuses claimed in the same second.
+    // than four bonuses claimed in the same second. A bonus has no hold, so
+    // it landed the day it was claimed.
     createdAt: daysAgo(day),
+    availableAt: daysAgo(day),
   })
   await db.insert(dailyClaims).values({
     userId: userIds['demo@example.com']!,

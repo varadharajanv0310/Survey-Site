@@ -40,7 +40,7 @@ export function AuthLayout({
     <div className="flex min-h-dvh flex-col">
       <header className="flex items-center justify-between px-5 py-5 lg:px-10">
         <span className="figure text-[13px] font-semibold tracking-[0.24em] text-[var(--accent)] uppercase">
-          {theme === 'tempo' ? 'Tempo' : 'Tally'}
+          {THEMES.find((t) => t.name === theme)?.label ?? 'Arrivals'}
         </span>
 
         <div

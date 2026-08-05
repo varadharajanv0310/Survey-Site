@@ -6,6 +6,7 @@ import { currentTheme, syncThemeAcrossTabs, type ThemeName } from '@/lib/theme'
 import { monthlySummary, weekEarned, type Entry } from '@/lib/entries'
 import { Shell, type Balance } from '@/components/shell'
 import { Skeleton } from '@/components/ui'
+import { ArrivalsBoard } from '@/components/arrivals/board'
 import { TallyBalance } from '@/components/tally/balance'
 import { TempoHome, type WeeklyState } from '@/components/tempo/home'
 
@@ -80,6 +81,14 @@ export default function WalletPage() {
           </div>
           <Skeleton className="h-48" />
         </div>
+      </Shell>
+    )
+  }
+
+  if (theme === 'arrivals') {
+    return (
+      <Shell>
+        <ArrivalsBoard balance={balance} entries={entries} />
       </Shell>
     )
   }
